@@ -96,7 +96,7 @@
                     <span class="min-w-0 flex-1">
                         <span class="flex items-center gap-1.5">
                             <span class="truncate text-sm font-medium text-zinc-900 dark:text-white">{{ $chat['name'] }}</span>
-
+                            
                             {{-- @if ($chat['pinned'])
                                 <flux:icon.map-pin class="size-3.5 shrink-0 text-zinc-400" />
                             @endif --}}

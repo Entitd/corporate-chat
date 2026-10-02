@@ -9,9 +9,11 @@ use Illuminate\Database\Eloquent\Relations\HasMany;
 class Message extends Model
 {
     protected $fillable = [
+        'chat_id',
+        'user_id',
         'body',
         'parent_id',
-        'forwarded_message_id'
+        'forwarded_message_id',
     ];
 
     public function user(): BelongsTo

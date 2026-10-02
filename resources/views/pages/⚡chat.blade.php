@@ -1,15 +1,14 @@
 <?php
 
+use App\Models\Attachment;
+use App\Models\Chat;
+use App\Models\ChatUser;
+use App\Models\Message;
+use App\Models\User;
 use Livewire\Attributes\Computed;
 use Livewire\Attributes\Layout;
 use Livewire\Attributes\Title;
 use Livewire\Component;
-
-use App\Models\User;
-use App\Models\Chat;
-use App\Models\ChatUser;
-use App\Models\Message;
-use App\Models\Attachment;
 
 /**
  * Демонстрационная страница корпоративного чата.
@@ -51,6 +50,9 @@ new #[Layout('layouts::chat')] #[Title('Чат')] class extends Component
     /** Чаты, которые пользователь уже открыл в этой сессии. */
     public array $readChatIds = [];
 
+    /** Текст нового сообщения в редакторе. */
+    public string $messageBody = '';
+
     /**
      * Открыть чат.
      */
@@ -68,6 +70,40 @@ new #[Layout('layouts::chat')] #[Title('Чат')] class extends Component
     public function backToList(): void
     {
         $this->showChatList = true;
+    }
+
+    /**
+     * Отправить сообщение в открытый чат.
+     */
+    public function sendMessage(): void
+    {
+        $body = trim($this->messageBody);
+
+        if ($body === '') {
+            $this->reset('messageBody');
+
+            return;
+        }
+
+        $this->validate([
+            'messageBody' => ['string', 'max:5000'],
+        ]);
+
+        $chat = Chat::query()->whereKey($this->activeChatId)->first();
+
+        abort_unless(
+            $chat !== null && $chat->users()->whereKey(auth()->id())->exists(),
+            403,
+        );
+
+        $chat->messages()->create([
+            'user_id' => auth()->id(),
+            'body' => $body,
+        ]);
+
+        $this->reset('messageBody');
+
+        $this->dispatch('message-sent');
     }
 
     /**
@@ -117,6 +153,26 @@ new #[Layout('layouts::chat')] #[Title('Чат')] class extends Component
     {
         $search = mb_strtolower(trim($this->search));
 
+        // dd($this->demoChats());
+        // dd(
+        //     collect($this->demoChats())
+        //     ->map(function (array $chat): array {
+        //         if (in_array($chat['id'], $this->readChatIds, true)) {
+        //             $chat['unread'] = 0;
+        //         }
+
+        //         return $chat;
+        //     })
+        //     ->when($this->chatFilter !== 'all', fn ($chats) => $chats->where('type', $this->chatFilter))
+        //     ->when($search !== '', fn ($chats) => $chats->filter(
+        //         fn (array $chat): bool => str_contains(mb_strtolower($chat['title']), $search)
+        //             || str_contains(mb_strtolower($chat['subtitle']), $search)
+        //             || str_contains(mb_strtolower($chat['last_message']['text']), $search),
+        //     ))
+        //     ->sortByDesc('pinned')
+        //     ->values()
+        //     ->all()
+        // );
         return collect($this->demoChats())
             ->map(function (array $chat): array {
                 if (in_array($chat['id'], $this->readChatIds, true)) {
@@ -217,13 +273,13 @@ new #[Layout('layouts::chat')] #[Title('Чат')] class extends Component
 
         $processedMessages = array_map(function (array $message) use (&$previous): array {
             // 1. Безопасно вытаскиваем день из created_at (если null — ставим текущую дату)
-            $currentDay = $message['created_at'] 
-                ? date('Y-m-d', strtotime($message['created_at'])) 
+            $currentDay = $message['created_at']
+                ? date('Y-m-d', strtotime($message['created_at']))
                 : date('Y-m-d');
 
             // 2. Вычисляем, принадлежит ли сообщение текущему пользователю
             $isOwn = isset($message['user_id']) && $message['user_id'] === auth()->id();
-            
+
             // Добавляем флаг own в массив сообщения
             $message['own'] = $isOwn;
 
@@ -234,7 +290,7 @@ new #[Layout('layouts::chat')] #[Title('Чат')] class extends Component
 
             // 4. Считаем флаги отображения
             $message['show_day'] = $previous === null || $previousDay !== $currentDay;
-            
+
             $message['first_of_group'] = $previous === null
                 || $previous['user_id'] !== ($message['user_id'] ?? null)
                 || $previous['own'] !== $isOwn
@@ -252,9 +308,6 @@ new #[Layout('layouts::chat')] #[Title('Чат')] class extends Component
         // dd($paginatorData);
         return $paginatorData;
     }
-
-
-
 
     /**
      * Файлы, которыми поделились в открытом чате.
@@ -347,8 +400,38 @@ new #[Layout('layouts::chat')] #[Title('Чат')] class extends Component
      */
     private function demoChats(): array
     {
-        return Chat::all()->toArray();
-        dd(Chat::all()->toArray());
+        $chats = Chat::all()->toArray();
+
+        foreach ($chats as $key => $chat) {
+            if (($chat['type'] ?? 'private') === 'private') {
+                // Ищем среди участников чата того, чей ID НЕ совпадает с вашим
+
+                // dd($chat);
+                $chat = Chat::find($chat['id']);
+
+                // Находим первого участника, чей ID не равен ID текущего пользователя
+                $interlocutor = $chat->users->firstWhere('id', '!=', auth()->id());
+
+                // Получаем его имя (или ставим заглушку, если в чате пока никого нет)
+                $interlocutorName = $interlocutor ? $interlocutor->name : 'Пустой чат';
+                // dd($interlocutorName);
+
+                // $interlocutor ;
+                if ($interlocutor) {
+                    // Заменяем технический title чата на имя собеседника
+                    $chats[$key]['name'] = $interlocutor['name'];
+
+                    // (Опционально) Если в массиве чата есть аватарка, меняем и её
+                    if (isset($interlocutor['avatar'])) {
+                        $chats[$key]['avatar'] = $interlocutor['avatar'];
+                    }
+                }
+            }
+        }
+
+        return $chats;
+
+        // dd(Chat::all()->toArray());
         return [
             [
                 'id' => 10,
@@ -473,6 +556,7 @@ new #[Layout('layouts::chat')] #[Title('Чат')] class extends Component
     {
         return User::all()->toArray();
         dd($res);
+
         return [
             'Анна Ковааааааааалёва' => [
                 'name' => 'Анна Коваааааааааааалёва',
@@ -533,17 +617,15 @@ new #[Layout('layouts::chat')] #[Title('Чат')] class extends Component
      */
     private function demoMessages(): array
     {
-        //dd($this->activeChatId);
+        // dd($this->activeChatId);
         // $chat = Chat::find($this->activeChatId);
-
 
         $chat = Chat::find($this->activeChatId);
 
         return $chat->messages()
             ->with('user:id,name') // Сразу подгружаем автора (имя, аватар) одним запросом
-            ->latest()                    // Сортируем от новых к старым (ORDER BY created_at DESC)
+            ->oldest()                    // Сортируем от старых к новым (ORDER BY created_at ASC)
             ->paginate(30)->toArray();
-
 
         // 2. Вытаскиваем сообщения через связь
         // $messages = $chat->messages()

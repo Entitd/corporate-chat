@@ -20,12 +20,14 @@
             </div>
 
             <flux:textarea
+                wire:model="messageBody"
                 rows="1"
                 resize="none"
                 class="min-w-0 flex-1"
                 :placeholder="__('Написать сообщение…')"
                 :aria-label="__('Новое сообщение')"
                 data-test="message-input"
+                @keydown.enter.exact.prevent="$wire.sendMessage()"
             />
 
             <flux:button
@@ -33,6 +35,7 @@
                 icon="paper-airplane"
                 square
                 :aria-label="__('Отправить')"
+                wire:click="sendMessage"
                 data-test="send-message"
             />
         </div>

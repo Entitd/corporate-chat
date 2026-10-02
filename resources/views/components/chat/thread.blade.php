@@ -7,6 +7,7 @@
     class="min-h-0 flex-1 overflow-y-auto bg-zinc-50 px-3 py-4 sm:px-6 dark:bg-zinc-800/60"
     x-data
     x-init="$nextTick(() => { $el.scrollTop = $el.scrollHeight })"
+    @message-sent.window="$nextTick(() => { $el.scrollTop = $el.scrollHeight })"
     data-test="chat-thread"
 >
     <div class="mx-auto flex max-w-3xl flex-col gap-4">
