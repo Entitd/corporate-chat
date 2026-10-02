@@ -17,11 +17,12 @@
             <flux:separator class="flex-1" />
         </div>
 
-        @foreach ($messages as $messageIndex => $message)
+        @foreach ($messages['data'] as $messageIndex => $message)
+        {{-- @dd($message) --}}
             @if ($message['show_day'])
                 <div class="flex items-center gap-3 py-2" wire:key="day-{{ $chat['id'] }}-{{ $messageIndex }}">
                     <flux:separator class="flex-1" />
-                    <span class="text-[11px] font-medium tracking-wide text-zinc-400 uppercase">{{ $message['day'] }}</span>
+                    {{-- <span class="text-[11px] font-medium tracking-wide text-zinc-400 uppercase">{{ $message['day'] }}</span> --}}
                     <flux:separator class="flex-1" />
                 </div>
             @endif

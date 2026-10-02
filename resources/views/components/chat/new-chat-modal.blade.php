@@ -62,14 +62,15 @@
                         <span class="relative shrink-0">
                             <flux:avatar :name="$colleague['name']" color="auto" size="sm" />
 
-                            @if ($colleague['online'])
+                            {{-- @if ($colleague['online'])
                                 <span class="absolute -end-0.5 -bottom-0.5 size-2.5 rounded-full border-2 border-white bg-green-500 dark:border-zinc-800"></span>
                             @endif
+                            --}}
                         </span>
 
                         <span class="min-w-0 flex-1">
                             <span class="block truncate text-sm text-zinc-900 dark:text-white">{{ $colleague['name'] }}</span>
-                            <span class="block truncate text-xs text-zinc-500 dark:text-zinc-400">{{ $colleague['position'] }}</span>
+                            <span class="block truncate text-xs text-zinc-500 dark:text-zinc-400">{{ $colleague['title'] }}</span>
                         </span>
                     </div>
                 @else
@@ -80,15 +81,15 @@
                         <span class="relative shrink-0">
                             <flux:avatar :name="$colleague['name']" color="auto" size="sm" />
 
-                            @if ($colleague['online'])
+                            {{--@if ($colleague['online'])
                                 <span class="absolute -end-0.5 -bottom-0.5 size-2.5 rounded-full border-2 border-white bg-green-500 dark:border-zinc-800"></span>
-                            @endif
+                            @endif--}}
                         </span>
 
                         <span class="min-w-0 flex-1">
                             <span class="block truncate text-sm text-zinc-900 dark:text-white">{{ $colleague['name'] }}</span>
                             <span class="block truncate text-xs text-zinc-500 dark:text-zinc-400">
-                                {{ $colleague['position'] }} · {{ $colleague['department'] }}
+                                {{ $colleague['title'] }}
                             </span>
                         </span>
 

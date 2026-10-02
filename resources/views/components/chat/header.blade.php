@@ -27,7 +27,7 @@
 
     <div class="min-w-0 flex-1">
         <div class="flex items-center gap-2">
-            <h1 class="truncate text-sm font-semibold text-zinc-900 dark:text-white">{{ $chat['title'] }}</h1>
+            <h1 class="truncate text-sm font-semibold text-zinc-900 dark:text-white">{{ $chat['name'] }}</h1>
 
             @if ($chat['type'] === 'group')
                 <span class="max-sm:hidden">
@@ -41,8 +41,8 @@
                 <span class="text-green-600 dark:text-green-400">{{ $chat['typing'] }} {{ __('печатает…') }}</span>
             @elseif ($chat['type'] === 'group')
                 {{ $chat['subtitle'] }}
-            @else
-                {{ $chat['presence'] ?? $chat['subtitle'] }}
+            {{-- @else
+                {{ $chat['presence'] ?? $chat['subtitle'] }} --}}
             @endif
         </p>
     </div>

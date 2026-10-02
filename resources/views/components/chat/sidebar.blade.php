@@ -95,34 +95,34 @@
                     {{-- Текст --}}
                     <span class="min-w-0 flex-1">
                         <span class="flex items-center gap-1.5">
-                            <span class="truncate text-sm font-medium text-zinc-900 dark:text-white">{{ $chat['title'] }}</span>
+                            <span class="truncate text-sm font-medium text-zinc-900 dark:text-white">{{ $chat['name'] }}</span>
 
-                            @if ($chat['pinned'])
+                            {{-- @if ($chat['pinned'])
                                 <flux:icon.map-pin class="size-3.5 shrink-0 text-zinc-400" />
-                            @endif
+                            @endif --}}
 
-                            @if ($chat['muted'])
+                            {{-- @if ($chat['muted'])
                                 <flux:icon.bell-slash class="size-3.5 shrink-0 text-zinc-400" />
-                            @endif
+                            @endif --}}
 
-                            <span @class([
+                            {{-- <span @class([
                                 'ms-auto shrink-0 text-[11px]',
                                 'font-semibold text-zinc-900 dark:text-white' => $chat['unread'] > 0,
                                 'text-zinc-400' => $chat['unread'] === 0,
-                            ])>{{ $chat['last_message']['at'] }}</span>
+                            ])>{{ $chat['last_message']['at'] }}</span> --}}
                         </span>
 
                         <span class="mt-0.5 flex items-center gap-2">
-                            <span class="truncate text-xs text-zinc-500 dark:text-zinc-400">
+                            {{-- <span class="truncate text-xs text-zinc-500 dark:text-zinc-400">
                                 @if ($chat['type'] === 'group')
                                     {{ $chat['last_message']['author'] }}:
                                 @endif
                                 {{ $chat['last_message']['text'] }}
-                            </span>
+                            </span> --}}
 
-                            @if ($chat['unread'] > 0)
+                            {{-- @if ($chat['unread'] > 0)
                                 <span class="ms-auto flex size-5 shrink-0 items-center justify-center rounded-full bg-accent text-[11px] font-semibold text-accent-foreground">{{ $chat['unread'] }}</span>
-                            @endif
+                            @endif --}}
                         </span>
                     </span>
                 </button>
@@ -133,11 +133,11 @@
                         <flux:button size="xs" variant="ghost" icon="ellipsis-horizontal" square />
 
                         <flux:menu>
-                            <flux:menu.item icon="check" wire:click="selectChat({{ $chat['id'] }})">
+                            {{-- <flux:menu.item icon="check" wire:click="selectChat({{ $chat['id'] }})">
                                 {{ $chat['unread'] > 0 ? __('Отметить прочитанным') : __('Открыть чат') }}
-                            </flux:menu.item>
-                            <flux:menu.item icon="bell-slash">{{ $chat['muted'] ? __('Включить уведомления') : __('Отключить уведомления') }}</flux:menu.item>
-                            <flux:menu.item icon="map-pin">{{ $chat['pinned'] ? __('Открепить') : __('Закрепить') }}</flux:menu.item>
+                            </flux:menu.item> --}}
+                            {{-- <flux:menu.item icon="bell-slash">{{ $chat['muted'] ? __('Включить уведомления') : __('Отключить уведомления') }}</flux:menu.item> --}}
+                            {{-- <flux:menu.item icon="map-pin">{{ $chat['pinned'] ? __('Открепить') : __('Закрепить') }}</flux:menu.item> --}}
                             <flux:menu.separator />
                             <flux:menu.item icon="user-plus">{{ __('Пригласить коллегу') }}</flux:menu.item>
                             <flux:menu.item icon="x-mark" variant="danger">{{ __('Покинуть чат') }}</flux:menu.item>

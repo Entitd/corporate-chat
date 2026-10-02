@@ -5,7 +5,8 @@
 
 @php
     $own = $message['own'];
-    $author = $own ? auth()->user()->name : $message['author'];
+    // dd($message);
+    $author = $own ? auth()->user()->name : $message['user']['name'];
 @endphp
 
 <div {{ $attributes->class(['flex items-end gap-2.5', 'flex-row-reverse' => $own]) }}>
@@ -77,7 +78,7 @@
 
             {{-- Время и статус --}}
             <span class="mt-1 flex items-center justify-end gap-1.5 text-[10px] opacity-70">
-                {{ $message['at'] }}
+                {{ $message['updated_at'] }}
 
                 @if ($own)
                     <span class="flex items-center -space-x-1.5" title="{{ __('Прочитано') }}">

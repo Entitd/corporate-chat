@@ -5,6 +5,12 @@ use Livewire\Attributes\Layout;
 use Livewire\Attributes\Title;
 use Livewire\Component;
 
+use App\Models\User;
+use App\Models\Chat;
+use App\Models\ChatUser;
+use App\Models\Message;
+use App\Models\Attachment;
+
 /**
  * Демонстрационная страница корпоративного чата.
  *
@@ -22,7 +28,7 @@ new #[Layout('layouts::chat')] #[Title('Чат')] class extends Component
     public string $chatFilter = 'all';
 
     /** Идентификатор открытого чата. */
-    public int $activeChatId = 10;
+    public int $activeChatId = 1;
 
     /** Панель с информацией о чате. */
     public bool $showDetails = false;
@@ -165,6 +171,9 @@ new #[Layout('layouts::chat')] #[Title('Чат')] class extends Component
     #[Computed]
     public function activeChat(): array
     {
+        // dd(collect($this->demoChats())->firstWhere('id', $this->activeChatId)
+        // ?? $this->demoChats()[0]);
+
         return collect($this->demoChats())->firstWhere('id', $this->activeChatId)
             ?? $this->demoChats()[0];
     }
@@ -175,25 +184,77 @@ new #[Layout('layouts::chat')] #[Title('Чат')] class extends Component
      * @return array<int, array<string, mixed>>
      */
     #[Computed]
+    // public function messages(): array
+    // {
+    //     $messages = $this->demoMessages()
+    //         ?? $this->fallbackMessages($this->activeChat);
+
+    //     dd($messages);
+    //     $previous = null;
+
+    //     return array_map(function (array $message) use (&$previous): array {
+    //         $message['show_day'] = $previous === null || $previous['day'] !== $message['day'];
+    //         $message['first_of_group'] = $previous === null
+    //             || $previous['author'] !== $message['author']
+    //             || $previous['own'] !== $message['own']
+    //             || $previous['day'] !== $message['day'];
+
+    //         $previous = $message;
+
+    //         return $message;
+    //     }, $messages);
+    // }
+
     public function messages(): array
     {
-        $messages = $this->demoMessages()[$this->activeChatId]
+        $paginatorData = $this->demoMessages()
             ?? $this->fallbackMessages($this->activeChat);
+
+        // Достаем массив самих сообщений из пагинатора
+        $messages = $paginatorData['data'] ?? [];
 
         $previous = null;
 
-        return array_map(function (array $message) use (&$previous): array {
-            $message['show_day'] = $previous === null || $previous['day'] !== $message['day'];
-            $message['first_of_group'] = $previous === null
-                || $previous['author'] !== $message['author']
-                || $previous['own'] !== $message['own']
-                || $previous['day'] !== $message['day'];
+        $processedMessages = array_map(function (array $message) use (&$previous): array {
+            // 1. Безопасно вытаскиваем день из created_at (если null — ставим текущую дату)
+            $currentDay = $message['created_at'] 
+                ? date('Y-m-d', strtotime($message['created_at'])) 
+                : date('Y-m-d');
 
+            // 2. Вычисляем, принадлежит ли сообщение текущему пользователю
+            $isOwn = isset($message['user_id']) && $message['user_id'] === auth()->id();
+            
+            // Добавляем флаг own в массив сообщения
+            $message['own'] = $isOwn;
+
+            // 3. Вычисляем день для предыдущего сообщения (для сравнения)
+            $previousDay = $previous && $previous['created_at']
+                ? date('Y-m-d', strtotime($previous['created_at']))
+                : ($previous ? date('Y-m-d') : null);
+
+            // 4. Считаем флаги отображения
+            $message['show_day'] = $previous === null || $previousDay !== $currentDay;
+            
+            $message['first_of_group'] = $previous === null
+                || $previous['user_id'] !== ($message['user_id'] ?? null)
+                || $previous['own'] !== $isOwn
+                || $previousDay !== $currentDay;
+
+            // Сохраняем текущее сообщение как предыдущее для следующей итерации
             $previous = $message;
 
             return $message;
         }, $messages);
+
+        // Записываем обработанные сообщения обратно в пагинатор
+        $paginatorData['data'] = $processedMessages;
+
+        // dd($paginatorData);
+        return $paginatorData;
     }
+
+
+
 
     /**
      * Файлы, которыми поделились в открытом чате.
@@ -241,15 +302,23 @@ new #[Layout('layouts::chat')] #[Title('Чат')] class extends Component
     {
         $colleagues = $this->demoColleagues();
 
-        return array_values(array_map(
-            fn (string $name): array => $colleagues[$name] ?? [
-                'name' => $name,
-                'position' => 'Сотрудник',
-                'online' => false,
-                'last_seen' => null,
-            ],
-            $this->activeChat['members'],
-        ));
+        // dd(ChatUser::where('chat_id', $this->activeChatId)->pluck('user_id')->toArray());
+
+        // dd($users = Chat::find($this->activeChatId)->users()->pluck('name')->toArray());
+        // dd(User::where('', ChatUser::where('chat_id', $this->activeChatId)->pluck('user_id')->toArray())->value('name'));
+        // dd(ChatUser::where('chat_id', $this->activeChatId)->get('user_id')->toArray());
+
+        return array_values(
+            array_map(
+                fn (string $name): array => $colleagues[$name] ?? [
+                    'name' => $name,
+                    'position' => 'Сотрудник',
+                    'online' => false,
+                    'last_seen' => null,
+                ],
+                $users = Chat::find($this->activeChatId)->users()->pluck('name')->toArray(),
+            )
+        );
     }
 
     /**
@@ -278,6 +347,8 @@ new #[Layout('layouts::chat')] #[Title('Чат')] class extends Component
      */
     private function demoChats(): array
     {
+        return Chat::all()->toArray();
+        dd(Chat::all()->toArray());
         return [
             [
                 'id' => 10,
@@ -400,9 +471,11 @@ new #[Layout('layouts::chat')] #[Title('Чат')] class extends Component
      */
     private function demoColleagues(): array
     {
+        return User::all()->toArray();
+        dd($res);
         return [
-            'Анна Ковалёва' => [
-                'name' => 'Анна Ковалёва',
+            'Анна Ковааааааааалёва' => [
+                'name' => 'Анна Коваааааааааааалёва',
                 'position' => 'Руководитель отдела маркетинга',
                 'department' => 'Маркетинг',
                 'online' => true,
@@ -460,6 +533,29 @@ new #[Layout('layouts::chat')] #[Title('Чат')] class extends Component
      */
     private function demoMessages(): array
     {
+        //dd($this->activeChatId);
+        // $chat = Chat::find($this->activeChatId);
+
+
+        $chat = Chat::find($this->activeChatId);
+
+        return $chat->messages()
+            ->with('user:id,name') // Сразу подгружаем автора (имя, аватар) одним запросом
+            ->latest()                    // Сортируем от новых к старым (ORDER BY created_at DESC)
+            ->paginate(30)->toArray();
+
+
+        // 2. Вытаскиваем сообщения через связь
+        // $messages = $chat->messages()
+        //     ->with('user:id,name') // Сразу подгружаем автора (имя, аватар) одним запросом
+        //     ->latest()                    // Сортируем от новых к старым (ORDER BY created_at DESC)
+        //     ->paginate(30);               // Берем порциями по 30 штук (для бесконечного скролла)
+        // dd(
+        //     $chat->messages()
+        //     ->with('user:id,name') // Сразу подгружаем автора (имя, аватар) одним запросом
+        //     ->latest()                    // Сортируем от новых к старым (ORDER BY created_at DESC)
+        //     ->paginate(30)->toArray()
+        // );
         return [
             10 => [
                 $this->message('Екатерина Волкова', 'Загрузила результаты регресса по релизу 1.7 — два падения на оплате, задачи завела в трекер.', '18:24', ['day' => 'Вчера']),
