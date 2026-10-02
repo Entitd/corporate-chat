@@ -14,7 +14,7 @@ return new class extends Migration
         Schema::create('chats', function (Blueprint $table) {
             $table->id();
             $table->string('name')->nullable();
-            $table->enum('type', ['private', 'group'])->default('private');
+            $table->enum('type', ['direct', 'group'])->default('direct');
             $table->timestamps();
         });
     }

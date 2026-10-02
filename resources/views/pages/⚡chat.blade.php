@@ -24,7 +24,7 @@ new #[Layout('layouts::chat')] #[Title('Чат')] class extends Component
     public string $search = '';
 
     /** Активный фильтр списка: all, direct или group. */
-    public string $chatFilter = 'all';
+    public string $chatFilter = 'direct';
 
     /** Идентификатор открытого чата. */
     public int $activeChatId = 1;
@@ -112,6 +112,7 @@ new #[Layout('layouts::chat')] #[Title('Чат')] class extends Component
     public function setFilter(string $filter): void
     {
         $this->chatFilter = in_array($filter, ['all', 'direct', 'group'], true) ? $filter : 'all';
+        // dd($this->chatFilter);
     }
 
     /**
@@ -153,9 +154,9 @@ new #[Layout('layouts::chat')] #[Title('Чат')] class extends Component
     {
         $search = mb_strtolower(trim($this->search));
 
-        // dd($this->demoChats());
-        // dd(
-        //     collect($this->demoChats())
+        // $this->chatFilter = 'direct';
+        
+        // dd(collect($this->demoChats())
         //     ->map(function (array $chat): array {
         //         if (in_array($chat['id'], $this->readChatIds, true)) {
         //             $chat['unread'] = 0;
@@ -173,6 +174,8 @@ new #[Layout('layouts::chat')] #[Title('Чат')] class extends Component
         //     ->values()
         //     ->all()
         // );
+
+
         return collect($this->demoChats())
             ->map(function (array $chat): array {
                 if (in_array($chat['id'], $this->readChatIds, true)) {
@@ -198,7 +201,9 @@ new #[Layout('layouts::chat')] #[Title('Чат')] class extends Component
     #[Computed]
     public function directCount(): int
     {
-        return count(array_filter($this->demoChats(), fn (array $chat): bool => $chat['type'] === 'direct'));
+        return auth()->user()->chats()
+            ->where('type', 'direct')
+            ->count();
     }
 
     /**
@@ -207,7 +212,9 @@ new #[Layout('layouts::chat')] #[Title('Чат')] class extends Component
     #[Computed]
     public function groupCount(): int
     {
-        return count(array_filter($this->demoChats(), fn (array $chat): bool => $chat['type'] === 'group'));
+        return auth()->user()->chats()
+            ->where('type', 'group')
+            ->count();
     }
 
     /**
@@ -240,27 +247,6 @@ new #[Layout('layouts::chat')] #[Title('Чат')] class extends Component
      * @return array<int, array<string, mixed>>
      */
     #[Computed]
-    // public function messages(): array
-    // {
-    //     $messages = $this->demoMessages()
-    //         ?? $this->fallbackMessages($this->activeChat);
-
-    //     dd($messages);
-    //     $previous = null;
-
-    //     return array_map(function (array $message) use (&$previous): array {
-    //         $message['show_day'] = $previous === null || $previous['day'] !== $message['day'];
-    //         $message['first_of_group'] = $previous === null
-    //             || $previous['author'] !== $message['author']
-    //             || $previous['own'] !== $message['own']
-    //             || $previous['day'] !== $message['day'];
-
-    //         $previous = $message;
-
-    //         return $message;
-    //     }, $messages);
-    // }
-
     public function messages(): array
     {
         $paginatorData = $this->demoMessages()
@@ -354,13 +340,6 @@ new #[Layout('layouts::chat')] #[Title('Чат')] class extends Component
     public function participants(): array
     {
         $colleagues = $this->demoColleagues();
-
-        // dd(ChatUser::where('chat_id', $this->activeChatId)->pluck('user_id')->toArray());
-
-        // dd($users = Chat::find($this->activeChatId)->users()->pluck('name')->toArray());
-        // dd(User::where('', ChatUser::where('chat_id', $this->activeChatId)->pluck('user_id')->toArray())->value('name'));
-        // dd(ChatUser::where('chat_id', $this->activeChatId)->get('user_id')->toArray());
-
         return array_values(
             array_map(
                 fn (string $name): array => $colleagues[$name] ?? [
@@ -400,10 +379,11 @@ new #[Layout('layouts::chat')] #[Title('Чат')] class extends Component
      */
     private function demoChats(): array
     {
-        $chats = Chat::all()->toArray();
+        // $chats = Chat::users()->all()->toArray();
+        $chats = auth()->user()->chats()->get()->toArray();
 
         foreach ($chats as $key => $chat) {
-            if (($chat['type'] ?? 'private') === 'private') {
+            if (($chat['type'] ?? 'direct') === 'direct') {
                 // Ищем среди участников чата того, чей ID НЕ совпадает с вашим
 
                 // dd($chat);
@@ -430,121 +410,6 @@ new #[Layout('layouts::chat')] #[Title('Чат')] class extends Component
         }
 
         return $chats;
-
-        // dd(Chat::all()->toArray());
-        return [
-            [
-                'id' => 10,
-                'type' => 'group',
-                'title' => 'Отдел разработки',
-                'subtitle' => '7 участников, 4 онлайн',
-                'online' => false,
-                'members' => [
-                    'Дмитрий Соколов', 'Анна Ковалёва', 'Игорь Петров', 'Мария Лебедева',
-                    'Ольга Новикова', 'Сергей Морозов', 'Екатерина Волкова',
-                ],
-                'unread' => 5,
-                'pinned' => true,
-                'muted' => false,
-                'typing' => 'Дмитрий Соколов',
-                'last_message' => ['author' => 'Ольга Новикова', 'text' => 'Проверю и поправлю, спасибо!', 'at' => '10:26'],
-            ],
-            [
-                'id' => 1,
-                'type' => 'direct',
-                'title' => 'Анна Ковалёва',
-                'subtitle' => 'Руководитель отдела маркетинга',
-                'presence' => 'в сети',
-                'online' => true,
-                'members' => ['Анна Ковалёва', 'Вы'],
-                'unread' => 2,
-                'pinned' => false,
-                'muted' => false,
-                'typing' => null,
-                'last_message' => ['author' => 'Анна Ковалёва', 'text' => 'И тексты обновила, забирай.', 'at' => '10:41'],
-            ],
-            [
-                'id' => 11,
-                'type' => 'group',
-                'title' => 'Проект «Атлас»',
-                'subtitle' => '4 участника, 2 онлайн',
-                'online' => false,
-                'members' => ['Сергей Морозов', 'Ольга Новикова', 'Дмитрий Соколов', 'Екатерина Волкова'],
-                'unread' => 0,
-                'pinned' => false,
-                'muted' => false,
-                'typing' => null,
-                'last_message' => ['author' => 'Сергей Морозов', 'text' => 'Миграцию прогнал на стейдже, всё зелёное.', 'at' => '09:58'],
-            ],
-            [
-                'id' => 3,
-                'type' => 'direct',
-                'title' => 'Мария Лебедева',
-                'subtitle' => 'HR-менеджер',
-                'presence' => 'была 20 минут назад',
-                'online' => false,
-                'members' => ['Мария Лебедева', 'Вы'],
-                'unread' => 1,
-                'pinned' => false,
-                'muted' => false,
-                'typing' => null,
-                'last_message' => ['author' => 'Мария Лебедева', 'text' => 'Напомни, пожалуйста, даты отпуска.', 'at' => 'Вчера'],
-            ],
-            [
-                'id' => 12,
-                'type' => 'group',
-                'title' => 'Общие объявления',
-                'subtitle' => '3 участника',
-                'online' => false,
-                'members' => ['Игорь Петров', 'Мария Лебедева', 'Анна Ковалёва'],
-                'unread' => 3,
-                'pinned' => false,
-                'muted' => true,
-                'typing' => null,
-                'last_message' => ['author' => 'Мария Лебедева', 'text' => 'С пятницы доступен новый пропускной режим.', 'at' => 'Вчера'],
-            ],
-            [
-                'id' => 4,
-                'type' => 'direct',
-                'title' => 'Ольга Новикова',
-                'subtitle' => 'Продуктовый дизайнер',
-                'presence' => 'в сети',
-                'online' => true,
-                'members' => ['Ольга Новикова', 'Вы'],
-                'unread' => 0,
-                'pinned' => false,
-                'muted' => false,
-                'typing' => null,
-                'last_message' => ['author' => 'Ольга Новикова', 'text' => 'Скинула макеты на ревью.', 'at' => 'Вчера'],
-            ],
-            [
-                'id' => 5,
-                'type' => 'direct',
-                'title' => 'Сергей Морозов',
-                'subtitle' => 'DevOps-инженер',
-                'presence' => 'был 3 часа назад',
-                'online' => false,
-                'members' => ['Сергей Морозов', 'Вы'],
-                'unread' => 0,
-                'pinned' => false,
-                'muted' => false,
-                'typing' => null,
-                'last_message' => ['author' => 'Вы', 'text' => 'Спасибо, деплой прошёл.', 'at' => 'Вчера'],
-            ],
-            [
-                'id' => 13,
-                'type' => 'group',
-                'title' => 'Маркетинг и продажи',
-                'subtitle' => '4 участника, 3 онлайн',
-                'online' => false,
-                'members' => ['Анна Ковалёва', 'Игорь Петров', 'Мария Лебедева', 'Ольга Новикова'],
-                'unread' => 0,
-                'pinned' => false,
-                'muted' => false,
-                'typing' => null,
-                'last_message' => ['author' => 'Анна Ковалёва', 'text' => 'Сводка по лидам за неделю во вложении.', 'at' => 'Пн'],
-            ],
-        ];
     }
 
     /**
@@ -555,59 +420,6 @@ new #[Layout('layouts::chat')] #[Title('Чат')] class extends Component
     private function demoColleagues(): array
     {
         return User::all()->toArray();
-        dd($res);
-
-        return [
-            'Анна Ковааааааааалёва' => [
-                'name' => 'Анна Коваааааааааааалёва',
-                'position' => 'Руководитель отдела маркетинга',
-                'department' => 'Маркетинг',
-                'online' => true,
-                'last_seen' => null,
-            ],
-            'Дмитрий Соколов' => [
-                'name' => 'Дмитрий Соколов',
-                'position' => 'Backend-разработчик',
-                'department' => 'Разработка',
-                'online' => true,
-                'last_seen' => null,
-            ],
-            'Мария Лебедева' => [
-                'name' => 'Мария Лебедева',
-                'position' => 'HR-менеджер',
-                'department' => 'Персонал',
-                'online' => false,
-                'last_seen' => 'была 20 минут назад',
-            ],
-            'Игорь Петров' => [
-                'name' => 'Игорь Петров',
-                'position' => 'Финансовый аналитик',
-                'department' => 'Финансы',
-                'online' => true,
-                'last_seen' => null,
-            ],
-            'Ольга Новикова' => [
-                'name' => 'Ольга Новикова',
-                'position' => 'Продуктовый дизайнер',
-                'department' => 'Продукт',
-                'online' => true,
-                'last_seen' => null,
-            ],
-            'Сергей Морозов' => [
-                'name' => 'Сергей Морозов',
-                'position' => 'DevOps-инженер',
-                'department' => 'Разработка',
-                'online' => false,
-                'last_seen' => 'был 3 часа назад',
-            ],
-            'Екатерина Волкова' => [
-                'name' => 'Екатерина Волкова',
-                'position' => 'QA-лид',
-                'department' => 'Разработка',
-                'online' => false,
-                'last_seen' => 'была вчера в 19:40',
-            ],
-        ];
     }
 
     /**
@@ -617,94 +429,12 @@ new #[Layout('layouts::chat')] #[Title('Чат')] class extends Component
      */
     private function demoMessages(): array
     {
-        // dd($this->activeChatId);
-        // $chat = Chat::find($this->activeChatId);
-
         $chat = Chat::find($this->activeChatId);
 
         return $chat->messages()
             ->with('user:id,name') // Сразу подгружаем автора (имя, аватар) одним запросом
             ->oldest()                    // Сортируем от старых к новым (ORDER BY created_at ASC)
             ->paginate(30)->toArray();
-
-        // 2. Вытаскиваем сообщения через связь
-        // $messages = $chat->messages()
-        //     ->with('user:id,name') // Сразу подгружаем автора (имя, аватар) одним запросом
-        //     ->latest()                    // Сортируем от новых к старым (ORDER BY created_at DESC)
-        //     ->paginate(30);               // Берем порциями по 30 штук (для бесконечного скролла)
-        // dd(
-        //     $chat->messages()
-        //     ->with('user:id,name') // Сразу подгружаем автора (имя, аватар) одним запросом
-        //     ->latest()                    // Сортируем от новых к старым (ORDER BY created_at DESC)
-        //     ->paginate(30)->toArray()
-        // );
-        return [
-            10 => [
-                $this->message('Екатерина Волкова', 'Загрузила результаты регресса по релизу 1.7 — два падения на оплате, задачи завела в трекер.', '18:24', ['day' => 'Вчера']),
-                $this->ownMessage('Спасибо, посмотрю утром первым делом.', '18:31', ['day' => 'Вчера']),
-                $this->message('Игорь Петров', 'Коллеги, доброе утро! Напоминаю: сегодня в 15:00 демо спринта в переговорной «Восток».', '09:12'),
-                $this->message('Мария Лебедева', 'Буду, подключусь из офиса.', '09:15', [
-                    'reactions' => [['emoji' => '👍', 'count' => 2, 'mine' => false]],
-                ]),
-                $this->ownMessage('Я подготовлю сборку к 14:30, чтобы успели прогнать smoke-тесты.', '09:21'),
-                $this->message('Дмитрий Соколов', 'Собрал черновик release notes, посмотрите до обеда.', '09:34', [
-                    'attachment' => ['name' => 'release-notes-1.7.md', 'size' => '24 КБ', 'kind' => 'Markdown'],
-                ]),
-                $this->message('Анна Ковалёва', 'Обновила макеты релиза 1.8, ссылка в задаче ATL-482.', '10:02', [
-                    'link' => [
-                        'host' => 'figma.com',
-                        'title' => 'Макеты релиза 1.8 — корпоративный портал',
-                        'description' => 'Экраны чата, профиля и настроек уведомлений. Комментарии оставляйте прямо во фреймах.',
-                        'url' => 'https://figma.com/file/atlas-1-8',
-                    ],
-                    'reactions' => [['emoji' => '🔥', 'count' => 3, 'mine' => true]],
-                ]),
-                $this->ownMessage('Отлично, забираю в работу.', '10:05'),
-                $this->message('Дмитрий Соколов', 'Уточню по отступам в таблице участников — кажется, на мобильных поедет.', '10:18', [
-                    'reply' => ['author' => 'Анна Ковалёва', 'body' => 'Обновила макеты релиза 1.8, ссылка в задаче ATL-482.'],
-                ]),
-                $this->message('Ольга Новикова', 'Проверю и поправлю, спасибо!', '10:26'),
-            ],
-            1 => [
-                $this->message('Анна Ковалёва', 'Привет! Есть минутка обсудить лендинг для конференции?', '10:31'),
-                $this->ownMessage('Привет, да. Что нужно поправить?', '10:33'),
-                $this->message('Анна Ковалёва', 'Первый экран: нужно поднять форму регистрации выше, на мобильных она уезжает под фолд.', '10:36'),
-                $this->ownMessage('Понял, поправлю сегодня до конца дня. Заведу отдельную задачу, чтобы не потерялось.', '10:38'),
-                $this->message('Анна Ковалёва', 'И тексты обновила, забирай.', '10:41', [
-                    'attachment' => ['name' => 'conference-landing-copy.docx', 'size' => '1,2 МБ', 'kind' => 'Документ'],
-                ]),
-            ],
-            11 => [
-                $this->message('Сергей Морозов', 'Коллеги, сегодня ночью переносим интеграцию с 1С на новый шлюз.', '09:40', ['day' => 'Вчера']),
-                $this->ownMessage('Нужно ли останавливать приём заявок?', '09:44', ['day' => 'Вчера']),
-                $this->message('Сергей Морозов', 'Нет, очередь дособерёт. Просто будет задержка до 5 минут.', '09:46', ['day' => 'Вчера']),
-                $this->message('Екатерина Волкова', 'Тогда прогоню сценарий с задержкой на стейдже до 22:00.', '09:51'),
-                $this->message('Сергей Морозов', 'Миграцию прогнал на стейдже, всё зелёное.', '09:58'),
-            ],
-            12 => [
-                $this->message('Мария Лебедева', 'Коллеги, с пятницы доступен новый пропускной режим: вход по карте с двух сторон здания.', '17:10', ['day' => 'Вчера']),
-                $this->message('Игорь Петров', 'Корпоративная связь переехала на новый тариф, счета придут в новом формате.', '17:40', ['day' => 'Вчера']),
-                $this->message('Мария Лебедева', 'Напоминаю про диспансеризацию — запись открыта до конца месяца.', '09:05'),
-            ],
-            3 => [
-                $this->message('Мария Лебедева', 'Привет! Напомни, пожалуйста, даты отпуска — нужно обновить график.', 'Вчера'),
-                $this->ownMessage('Привет! С 12 по 26 августа.', 'Вчера'),
-                $this->message('Мария Лебедева', 'Записала, спасибо!', 'Вчера'),
-            ],
-            4 => [
-                $this->message('Ольга Новикова', 'Скинула макеты на ревью, посмотри блок с участниками чата.', 'Вчера'),
-                $this->ownMessage('Посмотрю завтра утром, спасибо!', 'Вчера'),
-            ],
-            5 => [
-                $this->message('Сергей Морозов', 'Деплой в прод прошёл, мониторинг чистый.', 'Вчера'),
-                $this->ownMessage('Спасибо, деплой прошёл.', 'Вчера'),
-            ],
-            13 => [
-                $this->message('Анна Ковалёва', 'Сводка по лидам за неделю во вложении.', 'Пн', [
-                    'attachment' => ['name' => 'leads-week-32.xlsx', 'size' => '318 КБ', 'kind' => 'Таблица'],
-                ]),
-            ],
-        ];
     }
 
     /**

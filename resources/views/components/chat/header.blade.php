@@ -20,9 +20,9 @@
     <span class="relative shrink-0">
         <x-chat.avatar :chat="$chat" />
 
-        @if ($chat['type'] === 'direct' && $chat['online'])
+        {{-- @if ($chat['type'] === 'direct' && $chat['online'])
             <span class="absolute -end-0.5 -bottom-0.5 size-3 rounded-full border-2 border-white bg-green-500 dark:border-zinc-800"></span>
-        @endif
+        @endif --}}
     </span>
 
     <div class="min-w-0 flex-1">
