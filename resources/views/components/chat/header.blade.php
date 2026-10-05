@@ -40,7 +40,7 @@
             @if (filled($chat['typing'] ?? null))
                 <span class="text-green-600 dark:text-green-400">{{ $chat['typing'] }} {{ __('печатает…') }}</span>
             @elseif ($chat['type'] === 'group')
-                {{ $chat['subtitle'] }}
+            {{-- {{ $chat['subtitle'] }} -- }}
             {{-- @else
                 {{ $chat['presence'] ?? $chat['subtitle'] }} --}}
             @endif

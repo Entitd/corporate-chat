@@ -24,7 +24,7 @@ new #[Layout('layouts::chat')] #[Title('Чат')] class extends Component
     public string $search = '';
 
     /** Активный фильтр списка: all, direct или group. */
-    public string $chatFilter = 'direct';
+    public string $chatFilter = 'all';
 
     /** Идентификатор открытого чата. */
     public int $activeChatId = 1;

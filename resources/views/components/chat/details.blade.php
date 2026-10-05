@@ -28,7 +28,7 @@
 
             <div>
                 <p class="text-sm font-semibold text-zinc-900 dark:text-white">{{ $chat['title'] }}</p>
-                <p class="mt-0.5 text-xs text-zinc-500 dark:text-zinc-400">{{ $chat['subtitle'] }}</p>
+                {{-- <p class="mt-0.5 text-xs text-zinc-500 dark:text-zinc-400">{{ $chat['subtitle'] }}</p> --}}
 
                 @if ($chat['type'] === 'direct')
                     <p class="mt-1 text-xs {{ $chat['online'] ? 'text-green-600 dark:text-green-400' : 'text-zinc-400' }}">
