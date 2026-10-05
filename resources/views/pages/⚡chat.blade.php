@@ -5,10 +5,13 @@ use App\Models\Chat;
 use App\Models\ChatUser;
 use App\Models\Message;
 use App\Models\User;
+use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Storage;
 use Livewire\Attributes\Computed;
 use Livewire\Attributes\Layout;
 use Livewire\Attributes\Title;
 use Livewire\Component;
+use Livewire\WithFileUploads;
 
 /**
  * Демонстрационная страница корпоративного чата.
@@ -20,6 +23,8 @@ use Livewire\Component;
  */
 new #[Layout('layouts::chat')] #[Title('Чат')] class extends Component
 {
+    use WithFileUploads;
+
     /** Поисковый запрос по списку чатов. */
     public string $search = '';
 
@@ -27,7 +32,14 @@ new #[Layout('layouts::chat')] #[Title('Чат')] class extends Component
     public string $chatFilter = 'all';
 
     /** Идентификатор открытого чата. */
-    public int $activeChatId = 1;
+    public int $activeChatId = 0;
+
+    /** Поиск по сообщениям открытого чата. */
+    public bool $showMessageSearch = false;
+
+    public string $messageSearch = '';
+
+    public int $messagePage = 1;
 
     /** Панель с информацией о чате. */
     public bool $showDetails = false;
@@ -53,15 +65,36 @@ new #[Layout('layouts::chat')] #[Title('Чат')] class extends Component
     /** Текст нового сообщения в редакторе. */
     public string $messageBody = '';
 
+    /** @var array<int, \Livewire\Features\SupportFileUploads\TemporaryUploadedFile> */
+    public array $pendingFiles = [];
+
+    /** @var array<int, int> */
+    public array $selectedMentionIds = [];
+
+    public bool $showMentionPicker = false;
+
+    public string $mentionSearch = '';
+
+    public function mount(): void
+    {
+        $this->activeChatId = auth()->user()->chats()->orderBy('chats.id')->value('chats.id') ?? 0;
+    }
+
     /**
      * Открыть чат.
      */
     public function selectChat(int $chatId): void
     {
+        abort_unless(auth()->user()->chats()->whereKey($chatId)->exists(), 403);
+
         $this->activeChatId = $chatId;
         $this->readChatIds = array_values(array_unique([...$this->readChatIds, $chatId]));
         $this->showChatList = false;
         $this->showDetails = false;
+        $this->showMessageSearch = false;
+        $this->messageSearch = '';
+        $this->messagePage = 1;
+        $this->reset('messageBody', 'pendingFiles', 'selectedMentionIds', 'showMentionPicker', 'mentionSearch');
     }
 
     /**
@@ -79,16 +112,6 @@ new #[Layout('layouts::chat')] #[Title('Чат')] class extends Component
     {
         $body = trim($this->messageBody);
 
-        if ($body === '') {
-            $this->reset('messageBody');
-
-            return;
-        }
-
-        $this->validate([
-            'messageBody' => ['string', 'max:5000'],
-        ]);
-
         $chat = Chat::query()->whereKey($this->activeChatId)->first();
 
         abort_unless(
@@ -96,14 +119,135 @@ new #[Layout('layouts::chat')] #[Title('Чат')] class extends Component
             403,
         );
 
-        $chat->messages()->create([
-            'user_id' => auth()->id(),
-            'body' => $body,
+        if ($body === '' && $this->pendingFiles === []) {
+            $this->reset('messageBody');
+
+            return;
+        }
+
+        $this->validate([
+            'messageBody' => ['string', 'max:5000'],
+            'pendingFiles' => ['array', 'max:3'],
+            'pendingFiles.*' => ['file', 'max:2048'],
+        ], [
+            'pendingFiles.max' => __('Можно прикрепить не больше 3 файлов.'),
+            'pendingFiles.*.max' => __('Файл должен быть не больше 2 МБ.'),
         ]);
 
-        $this->reset('messageBody');
+        $mentionIds = array_values(array_unique(array_map('intval', $this->selectedMentionIds)));
+        $mentionedUsers = $chat->users()->whereIn('users.id', $mentionIds)->get(['users.id', 'users.name']);
+        abort_unless($mentionedUsers->count() === count($mentionIds), 403);
+        $mentionIds = $mentionedUsers
+            ->filter(fn (User $user): bool => str_contains($body, '@'.$user->name))
+            ->pluck('id')
+            ->all();
+
+        $storedPaths = [];
+
+        try {
+            DB::transaction(function () use ($chat, $body, $mentionIds, &$storedPaths): void {
+                $message = $chat->messages()->create([
+                    'user_id' => auth()->id(),
+                    'body' => $body === '' ? null : $body,
+                ]);
+
+                $message->mentions()->attach($mentionIds);
+
+                foreach ($this->pendingFiles as $file) {
+                    $fileName = basename(str_replace('\\', '/', $file->getClientOriginalName()));
+                    $fileName = mb_strimwidth(preg_replace('/[[:cntrl:]]/u', '', $fileName) ?: 'file', 0, 255);
+                    $path = $file->store('chat-attachments/'.$chat->id, 'local');
+
+                    if ($path === false) {
+                        throw new \RuntimeException('Не удалось сохранить файл.');
+                    }
+
+                    $storedPaths[] = $path;
+
+                    $message->attachments()->create([
+                        'file_path' => $path,
+                        'file_name' => $fileName,
+                        'file_type' => $file->getMimeType() ?: 'application/octet-stream',
+                        'file_size' => $file->getSize(),
+                    ]);
+                }
+            });
+        } catch (\Throwable $exception) {
+            Storage::disk('local')->delete($storedPaths);
+
+            throw $exception;
+        }
+
+        $this->reset('messageBody', 'pendingFiles', 'selectedMentionIds', 'showMentionPicker', 'mentionSearch');
 
         $this->dispatch('message-sent');
+    }
+
+    public function removePendingFile(int $index): void
+    {
+        unset($this->pendingFiles[$index]);
+        $this->pendingFiles = array_values($this->pendingFiles);
+    }
+
+    public function openMentionPicker(): void
+    {
+        abort_unless($this->activeChatId && auth()->user()->chats()->whereKey($this->activeChatId)->exists(), 403);
+        $this->showMentionPicker = true;
+        $this->mentionSearch = '';
+    }
+
+    public function updatedMessageBody(): void
+    {
+        if (preg_match('/(?:^|\s)@([\p{L}\p{N}._-]*)$/u', $this->messageBody, $matches)) {
+            $this->showMentionPicker = true;
+            $this->mentionSearch = $matches[1];
+        } else {
+            $this->showMentionPicker = false;
+            $this->mentionSearch = '';
+        }
+    }
+
+    /** @return array<int, array{id: int, name: string, title: string|null}> */
+    #[Computed]
+    public function mentionCandidates(): array
+    {
+        if (! $this->activeChatId) {
+            return [];
+        }
+
+        $this->activeChat;
+
+        $search = mb_strtolower(trim($this->mentionSearch));
+
+        return Chat::findOrFail($this->activeChatId)->users()
+            ->where('users.id', '!=', auth()->id())
+            ->orderBy('users.name')
+            ->get(['users.id', 'users.name', 'users.title'])
+            ->filter(fn (User $user): bool => $search === '' || str_contains(mb_strtolower($user->name), $search))
+            ->map(fn (User $user): array => ['id' => $user->id, 'name' => $user->name, 'title' => $user->title])
+            ->values()
+            ->all();
+    }
+
+    public function mentionColleague(int $userId): void
+    {
+        $chat = Chat::query()->whereKey($this->activeChatId)->first();
+        abort_unless($chat !== null && $chat->users()->whereKey(auth()->id())->exists(), 403);
+
+        $colleague = $chat->users()->whereKey($userId)->where('users.id', '!=', auth()->id())->first();
+        abort_unless($colleague !== null, 403);
+
+        $text = '@'.$colleague->name.' ';
+        if (preg_match('/(?:^|\s)@[\p{L}\p{N}._-]*$/u', $this->messageBody)) {
+            $this->messageBody = preg_replace_callback('/@[\p{L}\p{N}._-]*$/u', fn (): string => $text, $this->messageBody);
+        } else {
+            $this->messageBody = ltrim(rtrim($this->messageBody).' '.$text);
+        }
+
+        $this->selectedMentionIds = array_values(array_unique([...$this->selectedMentionIds, $colleague->id]));
+        $this->showMentionPicker = false;
+        $this->mentionSearch = '';
+        $this->dispatch('mention-inserted');
     }
 
     /**
@@ -120,7 +264,38 @@ new #[Layout('layouts::chat')] #[Title('Чат')] class extends Component
      */
     public function toggleDetails(): void
     {
+        abort_unless($this->activeChatId && auth()->user()->chats()->whereKey($this->activeChatId)->exists(), 403);
         $this->showDetails = ! $this->showDetails;
+    }
+
+    public function showParticipants(): void
+    {
+        abort_unless($this->activeChatId && auth()->user()->chats()->whereKey($this->activeChatId)->exists(), 403);
+        $this->showDetails = true;
+        $this->dispatch('show-chat-participants');
+    }
+
+    public function toggleMessageSearch(): void
+    {
+        abort_unless($this->activeChatId && auth()->user()->chats()->whereKey($this->activeChatId)->exists(), 403);
+        $this->showMessageSearch = ! $this->showMessageSearch;
+        $this->messageSearch = '';
+        $this->messagePage = 1;
+    }
+
+    public function updatedMessageSearch(): void
+    {
+        $this->messagePage = 1;
+        $this->dispatch('message-search-updated');
+    }
+
+    public function changeMessagePage(int $page): void
+    {
+        abort_unless($this->activeChatId && auth()->user()->chats()->whereKey($this->activeChatId)->exists(), 403);
+        $lastPage = max(1, (int) ceil($this->messages['total'] / 30));
+        $this->messagePage = min(max($page, 1), $lastPage);
+        unset($this->messages);
+        $this->dispatch('message-search-updated');
     }
 
     /**
@@ -153,44 +328,11 @@ new #[Layout('layouts::chat')] #[Title('Чат')] class extends Component
     public function chats(): array
     {
         $search = mb_strtolower(trim($this->search));
-
-        // $this->chatFilter = 'direct';
-        
-        // dd(collect($this->demoChats())
-        //     ->map(function (array $chat): array {
-        //         if (in_array($chat['id'], $this->readChatIds, true)) {
-        //             $chat['unread'] = 0;
-        //         }
-
-        //         return $chat;
-        //     })
-        //     ->when($this->chatFilter !== 'all', fn ($chats) => $chats->where('type', $this->chatFilter))
-        //     ->when($search !== '', fn ($chats) => $chats->filter(
-        //         fn (array $chat): bool => str_contains(mb_strtolower($chat['title']), $search)
-        //             || str_contains(mb_strtolower($chat['subtitle']), $search)
-        //             || str_contains(mb_strtolower($chat['last_message']['text']), $search),
-        //     ))
-        //     ->sortByDesc('pinned')
-        //     ->values()
-        //     ->all()
-        // );
-
-
         return collect($this->demoChats())
-            ->map(function (array $chat): array {
-                if (in_array($chat['id'], $this->readChatIds, true)) {
-                    $chat['unread'] = 0;
-                }
-
-                return $chat;
-            })
             ->when($this->chatFilter !== 'all', fn ($chats) => $chats->where('type', $this->chatFilter))
             ->when($search !== '', fn ($chats) => $chats->filter(
-                fn (array $chat): bool => str_contains(mb_strtolower($chat['title']), $search)
-                    || str_contains(mb_strtolower($chat['subtitle']), $search)
-                    || str_contains(mb_strtolower($chat['last_message']['text']), $search),
+                fn (array $chat): bool => str_contains(mb_strtolower($chat['name']), $search),
             ))
-            ->sortByDesc('pinned')
             ->values()
             ->all();
     }
@@ -237,8 +379,13 @@ new #[Layout('layouts::chat')] #[Title('Чат')] class extends Component
         // dd(collect($this->demoChats())->firstWhere('id', $this->activeChatId)
         // ?? $this->demoChats()[0]);
 
-        return collect($this->demoChats())->firstWhere('id', $this->activeChatId)
-            ?? $this->demoChats()[0];
+        if (! $this->activeChatId) {
+            return [];
+        }
+
+        abort_unless(auth()->user()->chats()->whereKey($this->activeChatId)->exists(), 403);
+
+        return collect($this->demoChats())->firstWhere('id', $this->activeChatId) ?? [];
     }
 
     /**
@@ -249,8 +396,7 @@ new #[Layout('layouts::chat')] #[Title('Чат')] class extends Component
     #[Computed]
     public function messages(): array
     {
-        $paginatorData = $this->demoMessages()
-            ?? $this->fallbackMessages($this->activeChat);
+        $paginatorData = $this->activeChatId ? $this->demoMessages() : ['data' => [], 'total' => 0];
 
         // Достаем массив самих сообщений из пагинатора
         $messages = $paginatorData['data'] ?? [];
@@ -303,14 +449,26 @@ new #[Layout('layouts::chat')] #[Title('Чат')] class extends Component
     #[Computed]
     public function sharedFiles(): array
     {
-        return array_values(array_filter(array_map(
-            fn (array $message): ?array => $message['attachment'] === null ? null : [
-                ...$message['attachment'],
-                'author' => $message['own'] ? auth()->user()->name : $message['author'],
-                'at' => $message['at'],
-            ],
-            $this->messages,
-        )));
+        if (! $this->activeChatId) {
+            return [];
+        }
+
+        $this->activeChat;
+
+        return Attachment::query()
+            ->join('messages', 'attachments.message_id', '=', 'messages.id')
+            ->join('users', 'messages.user_id', '=', 'users.id')
+            ->where('messages.chat_id', $this->activeChatId)
+            ->whereNull('messages.deleted_at')
+            ->select('attachments.id', 'attachments.file_name', 'attachments.file_size', 'users.name as author')
+            ->get()
+            ->map(fn (Attachment $file): array => [
+                'name' => $file->file_name,
+                'size' => $file->file_size === null ? '—' : number_format($file->file_size / 1024, 1).' КБ',
+                'author' => $file->author,
+                'url' => route('chat.attachments.download', $file->id),
+            ])
+            ->all();
     }
 
     /**
@@ -321,14 +479,27 @@ new #[Layout('layouts::chat')] #[Title('Чат')] class extends Component
     #[Computed]
     public function sharedLinks(): array
     {
-        return array_values(array_filter(array_map(
-            fn (array $message): ?array => $message['link'] === null ? null : [
-                ...$message['link'],
-                'author' => $message['own'] ? auth()->user()->name : $message['author'],
-                'at' => $message['at'],
-            ],
-            $this->messages,
-        )));
+        if (! $this->activeChatId) {
+            return [];
+        }
+
+        $this->activeChat;
+
+        return Chat::findOrFail($this->activeChatId)->messages()
+            ->whereNotNull('body')
+            ->latest()
+            ->get(['body', 'created_at'])
+            ->flatMap(function (Message $message): array {
+                preg_match_all('~https?://[^\s<>]+~u', $message->body, $matches);
+
+                return array_map(fn (string $url): array => [
+                    'url' => $url,
+                    'title' => $url,
+                    'host' => parse_url($url, PHP_URL_HOST) ?: $url,
+                    'at' => $message->created_at?->format('d.m.Y') ?? '',
+                ], $matches[0]);
+            })
+            ->all();
     }
 
     /**
@@ -339,18 +510,21 @@ new #[Layout('layouts::chat')] #[Title('Чат')] class extends Component
     #[Computed]
     public function participants(): array
     {
-        $colleagues = $this->demoColleagues();
-        return array_values(
-            array_map(
-                fn (string $name): array => $colleagues[$name] ?? [
-                    'name' => $name,
-                    'position' => 'Сотрудник',
-                    'online' => false,
-                    'last_seen' => null,
-                ],
-                $users = Chat::find($this->activeChatId)->users()->pluck('name')->toArray(),
-            )
-        );
+        if (! $this->activeChatId) {
+            return [];
+        }
+
+        $this->activeChat;
+
+        return Chat::findOrFail($this->activeChatId)->users()
+            ->orderBy('users.name')
+            ->get(['users.id', 'users.name', 'users.title'])
+            ->map(fn (User $user): array => [
+                'id' => $user->id,
+                'name' => $user->name,
+                'position' => $user->title ?: __('Сотрудник'),
+            ])
+            ->all();
     }
 
     /**
@@ -405,7 +579,11 @@ new #[Layout('layouts::chat')] #[Title('Чат')] class extends Component
                     if (isset($interlocutor['avatar'])) {
                         $chats[$key]['avatar'] = $interlocutor['avatar'];
                     }
+                } else {
+                    $chats[$key]['name'] = $interlocutorName;
                 }
+            } else {
+                $chats[$key]['name'] = $chat['name'] ?: __('Групповой чат');
             }
         }
 
@@ -429,12 +607,35 @@ new #[Layout('layouts::chat')] #[Title('Чат')] class extends Component
      */
     private function demoMessages(): array
     {
-        $chat = Chat::find($this->activeChatId);
+        $this->activeChat;
+        $chat = Chat::findOrFail($this->activeChatId);
 
-        return $chat->messages()
-            ->with('user:id,name') // Сразу подгружаем автора (имя, аватар) одним запросом
-            ->oldest()                    // Сортируем от старых к новым (ORDER BY created_at ASC)
-            ->paginate(30)->toArray();
+        $query = $chat->messages()
+            ->with(['user:id,name', 'attachments:id,message_id,file_name,file_type,file_size', 'mentions:id,name'])
+            ->oldest()
+            ->orderBy('id');
+        $search = trim($this->messageSearch);
+
+        if ($search === '') {
+            return $query->paginate(30)->toArray();
+        }
+
+        $matches = [];
+        $total = 0;
+
+        foreach ($query->lazy(200) as $message) {
+            if (mb_stripos($message->body ?? '', $search) === false) {
+                continue;
+            }
+
+            if ($total >= ($this->messagePage - 1) * 30 && count($matches) < 30) {
+                $matches[] = $message->toArray();
+            }
+
+            $total++;
+        }
+
+        return ['data' => $matches, 'total' => $total];
     }
 
     /**
@@ -505,6 +706,7 @@ new #[Layout('layouts::chat')] #[Title('Чат')] class extends Component
     </aside>
 
     {{-- Переписка --}}
+    @if ($this->activeChat !== [])
     <main class="{{ $showChatList ? 'hidden' : 'flex' }} min-w-0 flex-1 flex-col lg:flex">
         <x-chat.header
             :chat="$this->activeChat"
@@ -512,16 +714,42 @@ new #[Layout('layouts::chat')] #[Title('Чат')] class extends Component
             :show-details="$showDetails"
         />
 
+        @if ($showMessageSearch)
+            <div class="flex items-center gap-2 border-b border-zinc-200 px-3 py-2 dark:border-zinc-700" data-test="message-search-panel">
+                <flux:input wire:model.live.debounce.300ms="messageSearch" class="flex-1" size="sm" icon="magnifying-glass" clearable :placeholder="__('Поиск по сообщениям')" :aria-label="__('Поиск по сообщениям')" data-test="message-search-input" />
+                @if (trim($messageSearch) !== '')
+                    <span class="shrink-0 text-xs text-zinc-500">{{ __('Найдено: :count', ['count' => $this->messages['total']]) }}</span>
+                @endif
+                <flux:button size="sm" variant="ghost" icon="x-mark" square wire:click="toggleMessageSearch" :aria-label="__('Закрыть поиск')" />
+            </div>
+        @endif
+
         <x-chat.thread
             :chat="$this->activeChat"
             :messages="$this->messages"
         />
 
-        <x-chat.composer :chat="$this->activeChat" />
+        @if ($showMessageSearch && trim($messageSearch) !== '' && $this->messages['total'] > 30)
+            <div class="flex items-center justify-center gap-3 border-t border-zinc-200 px-3 py-2 text-xs dark:border-zinc-700" data-test="message-search-pages">
+                <flux:button size="sm" variant="ghost" wire:click="changeMessagePage({{ $messagePage - 1 }})" :disabled="$messagePage === 1">{{ __('Назад') }}</flux:button>
+                <span>{{ $messagePage }} / {{ (int) ceil($this->messages['total'] / 30) }}</span>
+                <flux:button size="sm" variant="ghost" wire:click="changeMessagePage({{ $messagePage + 1 }})" :disabled="$messagePage >= ceil($this->messages['total'] / 30)">{{ __('Далее') }}</flux:button>
+            </div>
+        @endif
+
+        <x-chat.composer
+            :chat="$this->activeChat"
+            :show-mention-picker="$showMentionPicker"
+            :mention-candidates="$showMentionPicker ? $this->mentionCandidates : []"
+            :pending-files="$pendingFiles"
+        />
     </main>
+    @else
+        <main class="flex min-w-0 flex-1 items-center justify-center text-sm text-zinc-500">{{ __('Выберите чат') }}</main>
+    @endif
 
     {{-- Информация о чате --}}
-    @if ($showDetails)
+    @if ($showDetails && $this->activeChat !== [])
         <x-chat.details
             :chat="$this->activeChat"
             :participants="$this->participants"

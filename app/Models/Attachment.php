@@ -3,6 +3,7 @@
 namespace App\Models;
 
 use Illuminate\Database\Eloquent\Model;
+use Illuminate\Database\Eloquent\Relations\BelongsTo;
 
 class Attachment extends Model
 {
@@ -11,6 +12,12 @@ class Attachment extends Model
         'file_name',
         'file_type',
         'file_size',
-        'duration'
+        'duration',
     ];
+
+    /** @return BelongsTo<Message, $this> */
+    public function message(): BelongsTo
+    {
+        return $this->belongsTo(Message::class);
+    }
 }

@@ -49,8 +49,8 @@
 
     {{-- Действия --}}
     <div class="flex items-center gap-0.5">
-        {{-- Звонки и поиск прячем на узких экранах, чтобы не обрезать название чата --}}
-        <div class="hidden items-center gap-0.5 sm:flex">
+        <div class="flex items-center gap-0.5">
+            {{-- Звонки пока не работают.
             <flux:tooltip :content="__('Аудиозвонок')">
                 <flux:button size="sm" variant="ghost" icon="phone" square />
             </flux:tooltip>
@@ -58,9 +58,10 @@
             <flux:tooltip :content="__('Видеовстреча')">
                 <flux:button size="sm" variant="ghost" icon="video-camera" square />
             </flux:tooltip>
+            --}}
 
             <flux:tooltip :content="__('Поиск в чате')">
-                <flux:button size="sm" variant="ghost" icon="magnifying-glass" square />
+                <flux:button size="sm" variant="ghost" icon="magnifying-glass" square wire:click="toggleMessageSearch" data-test="open-message-search" />
             </flux:tooltip>
         </div>
 
@@ -80,7 +81,7 @@
             <flux:button size="sm" variant="ghost" icon="ellipsis-vertical" square />
 
             <flux:menu>
-                <flux:menu.item icon="user-group">{{ __('Участники') }}</flux:menu.item>
+                <flux:menu.item icon="user-group" wire:click="showParticipants">{{ __('Участники') }}</flux:menu.item>
                 <flux:menu.item icon="bell-slash">{{ __('Отключить уведомления') }}</flux:menu.item>
                 <flux:menu.item icon="map-pin">{{ __('Закрепить чат') }}</flux:menu.item>
                 <flux:menu.separator />

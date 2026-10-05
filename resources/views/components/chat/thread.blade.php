@@ -8,6 +8,7 @@
     x-data
     x-init="$nextTick(() => { $el.scrollTop = $el.scrollHeight })"
     @message-sent.window="$nextTick(() => { $el.scrollTop = $el.scrollHeight })"
+    @message-search-updated.window="$nextTick(() => { $el.scrollTop = 0 })"
     data-test="chat-thread"
 >
     <div class="mx-auto flex max-w-3xl flex-col gap-4">
@@ -18,10 +19,10 @@
             <flux:separator class="flex-1" />
         </div>
 
-        @foreach ($messages['data'] as $messageIndex => $message)
+        @forelse ($messages['data'] as $messageIndex => $message)
         {{-- @dd($message) --}}
             @if ($message['show_day'])
-                <div class="flex items-center gap-3 py-2" wire:key="day-{{ $chat['id'] }}-{{ $messageIndex }}">
+                <div class="flex items-center gap-3 py-2" wire:key="day-{{ $chat['id'] }}-{{ $message['id'] }}">
                     <flux:separator class="flex-1" />
                     {{-- <span class="text-[11px] font-medium tracking-wide text-zinc-400 uppercase">{{ $message['day'] }}</span> --}}
                     <flux:separator class="flex-1" />
@@ -29,11 +30,15 @@
             @endif
 
             <x-chat.message
-                wire:key="message-{{ $chat['id'] }}-{{ $messageIndex }}"
+                wire:key="message-{{ $chat['id'] }}-{{ $message['id'] }}"
                 :message="$message"
                 :message-index="$messageIndex"
             />
-        @endforeach
+        @empty
+            <p class="py-8 text-center text-sm text-zinc-500 dark:text-zinc-400">
+                {{ trim($this->messageSearch) !== '' ? __('Сообщения не найдены') : __('В этом чате пока нет сообщений') }}
+            </p>
+        @endforelse
 
         {{-- Индикатор набора текста --}}
         @if (filled($chat['typing'] ?? null))

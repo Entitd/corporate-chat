@@ -46,21 +46,31 @@
             'bg-accent text-accent-foreground' => $own,
             'bg-zinc-100 text-zinc-800 dark:bg-zinc-700/60 dark:text-zinc-100' => ! $own,
         ])>
-            <p class="break-words whitespace-pre-line">{{ $message['body'] }}</p>
+            @if (filled($message['body']))
+                <p class="break-words whitespace-pre-line">{{ $message['body'] }}</p>
+            @endif
 
-            {{-- Вложение --}}
-            @if (filled($message['attachment'] ?? null))
-                <div class="mt-2 flex items-center gap-3 rounded-xl bg-white/70 p-2.5 dark:bg-black/20">
+            @if (filled($message['mentions'] ?? []))
+                <div class="mt-2 flex flex-wrap gap-1" data-test="message-mentions">
+                    @foreach ($message['mentions'] as $mentionedUser)
+                        <span class="rounded-md bg-white/20 px-1.5 py-0.5 text-xs">{{ '@'.$mentionedUser['name'] }}</span>
+                    @endforeach
+                </div>
+            @endif
+
+            {{-- Вложения --}}
+            @foreach ($message['attachments'] ?? [] as $attachment)
+                <a href="{{ route('chat.attachments.download', $attachment['id']) }}" class="mt-2 flex items-center gap-3 rounded-xl bg-white/70 p-2.5 text-inherit dark:bg-black/20" data-test="message-attachment">
                     <span class="flex size-9 shrink-0 items-center justify-center rounded-lg bg-zinc-200 text-zinc-600 dark:bg-zinc-600 dark:text-zinc-100">
                         <flux:icon.document class="size-4" />
                     </span>
                     <span class="min-w-0 flex-1">
-                        <span class="block truncate text-xs font-medium">{{ $message['attachment']['name'] }}</span>
-                        <span class="block text-[11px] opacity-70">{{ $message['attachment']['kind'] }} · {{ $message['attachment']['size'] }}</span>
+                        <span class="block truncate text-xs font-medium">{{ $attachment['file_name'] }}</span>
+                        <span class="block text-[11px] opacity-70">{{ $attachment['file_type'] }} · {{ number_format(($attachment['file_size'] ?? 0) / 1024, 1) }} КБ</span>
                     </span>
                     <flux:icon.arrow-down-tray class="size-4 shrink-0 opacity-60" />
-                </div>
-            @endif
+                </a>
+            @endforeach
 
             {{-- Ссылка --}}
             @if (filled($message['link'] ?? null))

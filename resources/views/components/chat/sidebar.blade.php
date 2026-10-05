@@ -137,8 +137,9 @@
                             </flux:menu.item> --}}
                             {{-- <flux:menu.item icon="bell-slash">{{ $chat['muted'] ? __('Включить уведомления') : __('Отключить уведомления') }}</flux:menu.item> --}}
                             {{-- <flux:menu.item icon="map-pin">{{ $chat['pinned'] ? __('Открепить') : __('Закрепить') }}</flux:menu.item> --}}
-                            <flux:menu.separator />
-                            <flux:menu.item icon="user-plus">{{ __('Пригласить коллегу') }}</flux:menu.item>
+                            @if ($chat['type'] === 'group')
+                                <flux:menu.item icon="user-plus" data-test="invite-colleague-menu-item">{{ __('Пригласить коллегу') }}</flux:menu.item>
+                            @endif
                             <flux:menu.item icon="x-mark" variant="danger">{{ __('Покинуть чат') }}</flux:menu.item>
                         </flux:menu>
                     </flux:dropdown>
