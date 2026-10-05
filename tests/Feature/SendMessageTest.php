@@ -27,6 +27,39 @@ test('a participant can send a message to a chat', function () {
     ]);
 });
 
+test('sending uses the current editor text and immediately shows the newest message', function () {
+    $user = User::factory()->create();
+    $colleague = User::factory()->create();
+    $chat = Chat::create(['type' => 'direct']);
+    $chat->users()->attach([$user->id, $colleague->id]);
+
+    foreach (range(1, 31) as $number) {
+        $chat->messages()->create(['user_id' => $colleague->id, 'body' => sprintf('Старое сообщение %03d', $number)]);
+    }
+
+    $this->actingAs($user);
+
+    Livewire::test('pages::chat')
+        ->assertSee('Старое сообщение 031')
+        ->assertDontSee('Старое сообщение 001')
+        ->set('messageBody', 'Текст с задержкой')
+        ->call('sendMessage', "Актуальный текст\nВторая строка")
+        ->assertSet('messageBody', '')
+        ->assertSee("Актуальный текст\nВторая строка")
+        ->assertDontSee('Старое сообщение 002')
+        ->assertDispatched('message-sent')
+        ->assertSee('Загрузить предыдущие сообщения')
+        ->call('loadOlderMessages')
+        ->assertSee('Старое сообщение 001');
+
+    $this->assertDatabaseHas('messages', [
+        'chat_id' => $chat->id,
+        'user_id' => $user->id,
+        'body' => "Актуальный текст\nВторая строка",
+    ]);
+    $this->assertDatabaseMissing('messages', ['body' => 'Текст с задержкой']);
+});
+
 test('an empty message is not sent', function () {
     $user = User::factory()->create();
     $colleague = User::factory()->create();

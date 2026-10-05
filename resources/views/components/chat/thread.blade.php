@@ -1,17 +1,25 @@
 @props([
     'chat' => [],
     'messages' => [],
+    'showMessageSearch' => false,
 ])
 
 <div
     class="min-h-0 flex-1 overflow-y-auto bg-zinc-50 px-3 py-4 sm:px-6 dark:bg-zinc-800/60"
-    x-data
+    x-data="{ previousHeight: 0 }"
     x-init="$nextTick(() => { $el.scrollTop = $el.scrollHeight })"
     @message-sent.window="$nextTick(() => { $el.scrollTop = $el.scrollHeight })"
     @message-search-updated.window="$nextTick(() => { $el.scrollTop = 0 })"
+    @older-messages-loaded.window="$nextTick(() => { $el.scrollTop += $el.scrollHeight - previousHeight })"
     data-test="chat-thread"
 >
     <div class="mx-auto flex max-w-3xl flex-col gap-4">
+        @if (! $showMessageSearch && count($messages['data']) < $messages['total'])
+            <button type="button" wire:click="loadOlderMessages" x-on:click="previousHeight = $el.closest('[data-test=chat-thread]').scrollHeight" class="mx-auto rounded-lg px-3 py-1.5 text-xs text-zinc-500 hover:bg-zinc-200/70 dark:hover:bg-zinc-700" data-test="load-older-messages">
+                {{ __('Загрузить предыдущие сообщения') }}
+            </button>
+        @endif
+
         {{-- Начало переписки --}}
         <div class="flex items-center gap-3 py-2">
             <flux:separator class="flex-1" />

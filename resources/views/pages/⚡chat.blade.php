@@ -9,6 +9,7 @@ use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Storage;
 use Livewire\Attributes\Computed;
 use Livewire\Attributes\Layout;
+use Livewire\Attributes\Locked;
 use Livewire\Attributes\Title;
 use Livewire\Component;
 use Livewire\WithFileUploads;
@@ -40,6 +41,9 @@ new #[Layout('layouts::chat')] #[Title('Чат')] class extends Component
     public string $messageSearch = '';
 
     public int $messagePage = 1;
+
+    #[Locked]
+    public int $visibleMessageCount = 30;
 
     /** Панель с информацией о чате. */
     public bool $showDetails = false;
@@ -94,6 +98,7 @@ new #[Layout('layouts::chat')] #[Title('Чат')] class extends Component
         $this->showMessageSearch = false;
         $this->messageSearch = '';
         $this->messagePage = 1;
+        $this->visibleMessageCount = 30;
         $this->reset('messageBody', 'pendingFiles', 'selectedMentionIds', 'showMentionPicker', 'mentionSearch');
     }
 
@@ -108,8 +113,12 @@ new #[Layout('layouts::chat')] #[Title('Чат')] class extends Component
     /**
      * Отправить сообщение в открытый чат.
      */
-    public function sendMessage(): void
+    public function sendMessage(?string $currentBody = null): void
     {
+        if ($currentBody !== null) {
+            $this->messageBody = $currentBody;
+        }
+
         $body = trim($this->messageBody);
 
         $chat = Chat::query()->whereKey($this->activeChatId)->first();
@@ -179,6 +188,11 @@ new #[Layout('layouts::chat')] #[Title('Чат')] class extends Component
         }
 
         $this->reset('messageBody', 'pendingFiles', 'selectedMentionIds', 'showMentionPicker', 'mentionSearch');
+        $this->showMessageSearch = false;
+        $this->messageSearch = '';
+        $this->messagePage = 1;
+        $this->visibleMessageCount = 30;
+        unset($this->messages, $this->sharedFiles, $this->sharedLinks);
 
         $this->dispatch('message-sent');
     }
@@ -296,6 +310,15 @@ new #[Layout('layouts::chat')] #[Title('Чат')] class extends Component
         $this->messagePage = min(max($page, 1), $lastPage);
         unset($this->messages);
         $this->dispatch('message-search-updated');
+    }
+
+    public function loadOlderMessages(): void
+    {
+        abort_unless($this->activeChatId && auth()->user()->chats()->whereKey($this->activeChatId)->exists(), 403);
+
+        $this->visibleMessageCount += 30;
+        unset($this->messages);
+        $this->dispatch('older-messages-loaded');
     }
 
     /**
@@ -611,19 +634,22 @@ new #[Layout('layouts::chat')] #[Title('Чат')] class extends Component
         $chat = Chat::findOrFail($this->activeChatId);
 
         $query = $chat->messages()
-            ->with(['user:id,name', 'attachments:id,message_id,file_name,file_type,file_size', 'mentions:id,name'])
-            ->oldest()
-            ->orderBy('id');
+            ->with(['user:id,name', 'attachments:id,message_id,file_name,file_type,file_size', 'mentions:id,name']);
         $search = trim($this->messageSearch);
 
         if ($search === '') {
-            return $query->paginate(30)->toArray();
+            return [
+                'data' => $query->latest('created_at')->orderByDesc('id')
+                    ->limit($this->visibleMessageCount)
+                    ->get()->reverse()->values()->map->toArray()->all(),
+                'total' => $chat->messages()->count(),
+            ];
         }
 
         $matches = [];
         $total = 0;
 
-        foreach ($query->lazy(200) as $message) {
+        foreach ($query->oldest()->orderBy('id')->lazy(200) as $message) {
             if (mb_stripos($message->body ?? '', $search) === false) {
                 continue;
             }
@@ -727,6 +753,7 @@ new #[Layout('layouts::chat')] #[Title('Чат')] class extends Component
         <x-chat.thread
             :chat="$this->activeChat"
             :messages="$this->messages"
+            :show-message-search="$showMessageSearch"
         />
 
         @if ($showMessageSearch && trim($messageSearch) !== '' && $this->messages['total'] > 30)

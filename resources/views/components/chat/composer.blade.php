@@ -5,7 +5,14 @@
     'pendingFiles' => [],
 ])
 
-<div class="shrink-0 border-t border-zinc-200 bg-white px-3 py-3 dark:border-zinc-700 dark:bg-zinc-800" x-data @mention-inserted.window="$nextTick(() => $refs.messageInput?.focus())">
+<div
+    class="shrink-0 border-t border-zinc-200 bg-white px-3 py-3 dark:border-zinc-700 dark:bg-zinc-800"
+    x-data="{ sending: false, uploading: false }"
+    @mention-inserted.window="$nextTick(() => $refs.messageInput?.focus())"
+    x-on:livewire-upload-start="uploading = true"
+    x-on:livewire-upload-finish="uploading = false"
+    x-on:livewire-upload-error="uploading = false"
+>
     <div class="mx-auto max-w-3xl">
         @if ($showMentionPicker)
             <div class="mb-2 max-h-56 overflow-y-auto rounded-xl border border-zinc-200 bg-white p-2 shadow-lg dark:border-zinc-700 dark:bg-zinc-900" data-test="mention-picker">
@@ -41,6 +48,7 @@
         <p wire:loading wire:target="pendingFiles" class="mb-2 text-xs text-zinc-500">{{ __('Загрузка файла…') }}</p>
         @error('pendingFiles') <p class="mb-2 text-xs text-red-600">{{ $message }}</p> @enderror
         @error('pendingFiles.*') <p class="mb-2 text-xs text-red-600">{{ $message }}</p> @enderror
+        @error('messageBody') <p class="mb-2 text-xs text-red-600">{{ $message }}</p> @enderror
 
         <div class="flex items-end gap-2">
             <div class="flex items-center gap-0.5">
@@ -67,7 +75,7 @@
                 :placeholder="__('Написать сообщение…')"
                 :aria-label="__('Новое сообщение')"
                 data-test="message-input"
-                @keydown.enter.exact.prevent="$wire.sendMessage()"
+                @keydown.enter="if ($event.shiftKey || $event.isComposing) return; $event.preventDefault(); if (sending || uploading) return; sending = true; $wire.sendMessage($event.target.value).finally(() => sending = false)"
             />
 
             <flux:button
@@ -75,7 +83,8 @@
                 icon="paper-airplane"
                 square
                 :aria-label="__('Отправить')"
-                wire:click="sendMessage"
+                x-on:click.prevent="if (sending || uploading) return; sending = true; $wire.sendMessage($refs.messageInput.value).finally(() => sending = false)"
+                x-bind:disabled="sending || uploading"
                 data-test="send-message"
             />
         </div>
