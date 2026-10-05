@@ -47,15 +47,7 @@
             'bg-zinc-100 text-zinc-800 dark:bg-zinc-700/60 dark:text-zinc-100' => ! $own,
         ])>
             @if (filled($message['body']))
-                <p class="break-words whitespace-pre-line">{{ $message['body'] }}</p>
-            @endif
-
-            @if (filled($message['mentions'] ?? []))
-                <div class="mt-2 flex flex-wrap gap-1" data-test="message-mentions">
-                    @foreach ($message['mentions'] as $mentionedUser)
-                        <span class="rounded-md bg-white/20 px-1.5 py-0.5 text-xs">{{ '@'.$mentionedUser['name'] }}</span>
-                    @endforeach
-                </div>
+                <p class="break-words whitespace-pre-line">@foreach ($message['body_segments'] as $segment)@if ($segment['user_id'])<a href="{{ route('chat.members.show', ['chat' => $message['chat_id'], 'user' => $segment['user_id']]) }}" wire:click.prevent="showMentionProfile({{ $segment['user_id'] }})" @class(['rounded px-0.5 font-semibold underline underline-offset-2 hover:opacity-75', 'bg-white/20 text-accent-foreground' => $own, 'bg-blue-500/15 text-blue-700 dark:text-blue-300' => ! $own]) data-test="message-mention-link">{{ $segment['text'] }}</a>@else{{ $segment['text'] }}@endif@endforeach</p>
             @endif
 
             {{-- Вложения --}}

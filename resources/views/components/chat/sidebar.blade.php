@@ -5,6 +5,7 @@
     'unreadTotal' => 0,
     'directCount' => 0,
     'groupCount' => 0,
+    'mentionNotifications' => [],
 ])
 
 @php
@@ -13,6 +14,7 @@
         ['key' => 'direct', 'label' => __('Личные'), 'count' => $directCount],
         ['key' => 'group', 'label' => __('Группы'), 'count' => $groupCount],
     ];
+    $mentionUnreadCount = collect($mentionNotifications)->where('read', false)->count();
 @endphp
 
 <div class="flex h-full min-h-0 flex-col">
@@ -37,6 +39,29 @@
                 data-test="new-chat-button"
             />
         </flux:tooltip>
+
+        <div wire:poll.15s>
+            <flux:dropdown position="bottom" align="end">
+                <span class="relative inline-flex">
+                    <flux:button size="sm" variant="ghost" icon="bell" square :aria-label="__('Упоминания')" data-test="mention-notifications-button" />
+                    @if ($mentionUnreadCount > 0)
+                        <span class="pointer-events-none absolute -end-1 -top-1 flex min-w-4 items-center justify-center rounded-full bg-red-600 px-1 text-[10px] leading-4 text-white">{{ $mentionUnreadCount }}</span>
+                    @endif
+                </span>
+
+                <flux:menu class="min-w-72 max-w-sm">
+                    <div class="px-3 py-2 text-xs font-semibold text-zinc-500">{{ __('Упоминания') }}</div>
+                    @forelse ($mentionNotifications as $notification)
+                        <flux:menu.item wire:key="mention-notification-{{ $notification['id'] }}" wire:click="openMentionNotification('{{ $notification['id'] }}')" data-test="mention-notification" class="whitespace-normal">
+                            <span @class(['block text-sm', 'font-semibold' => ! $notification['read']])>{{ __('Вас упомянул :name', ['name' => $notification['author_name']]) }}</span>
+                            <span class="block truncate text-xs text-zinc-500">{{ $notification['chat_name'] }} · {{ $notification['excerpt'] }}</span>
+                        </flux:menu.item>
+                    @empty
+                        <p class="px-3 py-3 text-xs text-zinc-500">{{ __('Упоминаний пока нет') }}</p>
+                    @endforelse
+                </flux:menu>
+            </flux:dropdown>
+        </div>
     </div>
 
     {{-- Поиск --}}

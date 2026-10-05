@@ -11,6 +11,7 @@
     @message-sent.window="$nextTick(() => { $el.scrollTop = $el.scrollHeight })"
     @message-search-updated.window="$nextTick(() => { $el.scrollTop = 0 })"
     @older-messages-loaded.window="$nextTick(() => { $el.scrollTop += $el.scrollHeight - previousHeight })"
+    @focus-chat-message.window="$nextTick(() => document.getElementById('chat-message-' + $event.detail.id)?.scrollIntoView({ block: 'center' }))"
     data-test="chat-thread"
 >
     <div class="mx-auto flex max-w-3xl flex-col gap-4">
@@ -38,6 +39,7 @@
             @endif
 
             <x-chat.message
+                id="chat-message-{{ $message['id'] }}"
                 wire:key="message-{{ $chat['id'] }}-{{ $message['id'] }}"
                 :message="$message"
                 :message-index="$messageIndex"

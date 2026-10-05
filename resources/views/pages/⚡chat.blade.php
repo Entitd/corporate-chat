@@ -5,8 +5,10 @@ use App\Models\Chat;
 use App\Models\ChatUser;
 use App\Models\Message;
 use App\Models\User;
+use App\Notifications\ChatMentioned;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Storage;
+use Illuminate\Support\Str;
 use Livewire\Attributes\Computed;
 use Livewire\Attributes\Layout;
 use Livewire\Attributes\Locked;
@@ -79,9 +81,20 @@ new #[Layout('layouts::chat')] #[Title('Чат')] class extends Component
 
     public string $mentionSearch = '';
 
+    public bool $showMemberModal = false;
+
+    public ?int $profileMemberId = null;
+
     public function mount(): void
     {
-        $this->activeChatId = auth()->user()->chats()->orderBy('chats.id')->value('chats.id') ?? 0;
+        $requestedChatId = request()->integer('chat');
+
+        if ($requestedChatId > 0) {
+            abort_unless(auth()->user()->chats()->whereKey($requestedChatId)->exists(), 403);
+            $this->activeChatId = $requestedChatId;
+        } else {
+            $this->activeChatId = auth()->user()->chats()->orderBy('chats.id')->value('chats.id') ?? 0;
+        }
     }
 
     /**
@@ -95,6 +108,8 @@ new #[Layout('layouts::chat')] #[Title('Чат')] class extends Component
         $this->readChatIds = array_values(array_unique([...$this->readChatIds, $chatId]));
         $this->showChatList = false;
         $this->showDetails = false;
+        $this->showMemberModal = false;
+        $this->profileMemberId = null;
         $this->showMessageSearch = false;
         $this->messageSearch = '';
         $this->messagePage = 1;
@@ -144,17 +159,30 @@ new #[Layout('layouts::chat')] #[Title('Чат')] class extends Component
         ]);
 
         $mentionIds = array_values(array_unique(array_map('intval', $this->selectedMentionIds)));
-        $mentionedUsers = $chat->users()->whereIn('users.id', $mentionIds)->get(['users.id', 'users.name']);
+        $mentionedUsers = $chat->users()->whereIn('users.id', $mentionIds)->get(['users.id', 'users.name'])->keyBy('id');
         abort_unless($mentionedUsers->count() === count($mentionIds), 403);
-        $mentionIds = $mentionedUsers
-            ->filter(fn (User $user): bool => str_contains($body, '@'.$user->name))
-            ->pluck('id')
-            ->all();
+        $mentionCounts = [];
+        $mentionIds = array_values(array_filter($mentionIds, function (int $userId) use ($mentionedUsers, $body, &$mentionCounts): bool {
+            if ($userId === auth()->id()) {
+                return false;
+            }
+
+            $token = '@'.$mentionedUsers[$userId]->name;
+            $mentionCounts[$token] ??= preg_match_all('/(?<![\p{L}\p{N}_])'.preg_quote($token, '/').'(?![\p{L}\p{N}_])/u', $body) ?: 0;
+
+            if ($mentionCounts[$token] === 0) {
+                return false;
+            }
+
+            $mentionCounts[$token]--;
+
+            return true;
+        }));
 
         $storedPaths = [];
 
         try {
-            DB::transaction(function () use ($chat, $body, $mentionIds, &$storedPaths): void {
+            DB::transaction(function () use ($chat, $body, $mentionIds, $mentionedUsers, &$storedPaths): void {
                 $message = $chat->messages()->create([
                     'user_id' => auth()->id(),
                     'body' => $body === '' ? null : $body,
@@ -179,6 +207,17 @@ new #[Layout('layouts::chat')] #[Title('Чат')] class extends Component
                         'file_type' => $file->getMimeType() ?: 'application/octet-stream',
                         'file_size' => $file->getSize(),
                     ]);
+                }
+
+                foreach ($mentionIds as $userId) {
+                    $recipient = $mentionedUsers[$userId];
+                    $recipient->notify(new ChatMentioned(
+                        $chat->id,
+                        $message->id,
+                        $chat->type === 'group' ? ($chat->name ?: __('Групповой чат')) : auth()->user()->name,
+                        auth()->user()->name,
+                        Str::limit($body, 120),
+                    ));
                 }
             });
         } catch (\Throwable $exception) {
@@ -262,6 +301,82 @@ new #[Layout('layouts::chat')] #[Title('Чат')] class extends Component
         $this->showMentionPicker = false;
         $this->mentionSearch = '';
         $this->dispatch('mention-inserted');
+    }
+
+    public function showMentionProfile(int $userId): void
+    {
+        abort_unless($this->activeChatId && auth()->user()->chats()->whereKey($this->activeChatId)->exists(), 403);
+        abort_unless(Chat::findOrFail($this->activeChatId)->users()->whereKey($userId)->exists(), 404);
+
+        $this->profileMemberId = $userId;
+        $this->showMemberModal = true;
+    }
+
+    /** @return array{id: int, name: string, title: string|null}|array{} */
+    #[Computed]
+    public function profileMember(): array
+    {
+        if (! $this->profileMemberId || ! $this->showMemberModal) {
+            return [];
+        }
+
+        $this->activeChat;
+        $member = Chat::findOrFail($this->activeChatId)->users()->whereKey($this->profileMemberId)->firstOrFail();
+
+        return ['id' => $member->id, 'name' => $member->name, 'title' => $member->title];
+    }
+
+    /** @return array<int, array{id: string, chat_id: int, message_id: int, author_name: string, chat_name: string, excerpt: string, read: bool}> */
+    #[Computed]
+    public function mentionNotifications(): array
+    {
+        $chatIds = auth()->user()->chats()->pluck('chats.id')->all();
+
+        return auth()->user()->notifications()
+            ->where('type', ChatMentioned::class)
+            ->latest()
+            ->limit(20)
+            ->get()
+            ->filter(fn ($notification): bool => in_array((int) ($notification->data['chat_id'] ?? 0), $chatIds, true))
+            ->map(fn ($notification): array => [
+                'id' => $notification->id,
+                'chat_id' => (int) $notification->data['chat_id'],
+                'message_id' => (int) $notification->data['message_id'],
+                'author_name' => $notification->data['author_name'],
+                'chat_name' => $notification->data['chat_name'],
+                'excerpt' => $notification->data['excerpt'],
+                'read' => $notification->read_at !== null,
+            ])
+            ->values()
+            ->all();
+    }
+
+    public function openMentionNotification(string $notificationId): void
+    {
+        $notification = auth()->user()->notifications()
+            ->whereKey($notificationId)
+            ->where('type', ChatMentioned::class)
+            ->firstOrFail();
+
+        $chat = auth()->user()->chats()->whereKey((int) ($notification->data['chat_id'] ?? 0))->firstOrFail();
+        $message = $chat->messages()->whereKey((int) ($notification->data['message_id'] ?? 0))
+            ->whereHas('mentions', fn ($users) => $users->whereKey(auth()->id()))
+            ->firstOrFail();
+
+        $notification->markAsRead();
+        $this->selectChat($chat->id);
+
+        $newerMessages = $chat->messages()
+            ->where(function ($query) use ($message): void {
+                $query->where('created_at', '>', $message->created_at)
+                    ->orWhere(function ($sameTime) use ($message): void {
+                        $sameTime->where('created_at', $message->created_at)->where('id', '>', $message->id);
+                    });
+            })
+            ->count();
+        $this->visibleMessageCount = max(30, (int) ceil(($newerMessages + 1) / 30) * 30);
+        unset($this->mentionNotifications, $this->messages);
+        $this->dispatch('focus-chat-message', id: $message->id);
     }
 
     /**
@@ -437,6 +552,7 @@ new #[Layout('layouts::chat')] #[Title('Чат')] class extends Component
 
             // Добавляем флаг own в массив сообщения
             $message['own'] = $isOwn;
+            $message['body_segments'] = $this->messageSegments($message);
 
             // 3. Вычисляем день для предыдущего сообщения (для сравнения)
             $previousDay = $previous && $previous['created_at']
@@ -665,6 +781,42 @@ new #[Layout('layouts::chat')] #[Title('Чат')] class extends Component
     }
 
     /**
+     * Разбить текст на обычные фрагменты и проверенные упоминания.
+     *
+     * @param  array<string, mixed>  $message
+     * @return array<int, array{text: string, user_id: int|null}>
+     */
+    private function messageSegments(array $message): array
+    {
+        $body = $message['body'] ?? '';
+        $mentionIdsByToken = [];
+
+        foreach ($message['mentions'] ?? [] as $user) {
+            $mentionIdsByToken['@'.$user['name']][] = $user['id'];
+        }
+
+        if ($body === '' || $mentionIdsByToken === []) {
+            return [['text' => $body, 'user_id' => null]];
+        }
+
+        $tokens = collect(array_keys($mentionIdsByToken))->sortByDesc(fn (string $token): int => mb_strlen($token))
+            ->map(fn (string $token): string => preg_quote($token, '/'))
+            ->implode('|');
+        $parts = preg_split('/(?<![\p{L}\p{N}_])('.$tokens.')(?![\p{L}\p{N}_])/u', $body, -1, PREG_SPLIT_DELIM_CAPTURE | PREG_SPLIT_NO_EMPTY);
+
+        $segments = [];
+
+        foreach ($parts ?: [$body] as $part) {
+            $segments[] = [
+                'text' => $part,
+                'user_id' => isset($mentionIdsByToken[$part]) ? array_shift($mentionIdsByToken[$part]) : null,
+            ];
+        }
+
+        return $segments;
+    }
+
+    /**
      * Заготовка переписки для чата без явной истории.
      *
      * @param  array<string, mixed>  $chat
@@ -728,6 +880,7 @@ new #[Layout('layouts::chat')] #[Title('Чат')] class extends Component
             :unread-total="$this->unreadTotal"
             :direct-count="$this->directCount"
             :group-count="$this->groupCount"
+            :mention-notifications="$this->mentionNotifications"
         />
     </aside>
 
@@ -790,4 +943,17 @@ new #[Layout('layouts::chat')] #[Title('Чат')] class extends Component
         :mode="$newChatMode"
         :selected="$selectedColleagues"
     />
+
+    <flux:modal wire:model="showMemberModal" class="md:w-80" data-test="mention-profile-modal">
+        @if ($showMemberModal && $this->profileMember !== [])
+            <div class="flex flex-col items-center gap-3 py-3 text-center">
+                <flux:avatar :name="$this->profileMember['name']" color="auto" size="lg" />
+                <flux:heading size="lg">{{ $this->profileMember['name'] }}</flux:heading>
+                @if ($this->profileMember['title'])
+                    <flux:text>{{ $this->profileMember['title'] }}</flux:text>
+                @endif
+                <a href="{{ route('chat.members.show', ['chat' => $activeChatId, 'user' => $this->profileMember['id']]) }}" class="mt-2 text-sm font-medium text-blue-600 hover:underline dark:text-blue-400">{{ __('Открыть профиль') }}</a>
+            </div>
+        @endif
+    </flux:modal>
 </div>

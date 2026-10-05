@@ -3,6 +3,7 @@
 use App\Models\Attachment;
 use App\Models\Chat;
 use App\Models\User;
+use App\Notifications\ChatMentioned;
 use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Facades\Storage;
 use Livewire\Livewire;
@@ -97,12 +98,25 @@ test('mentions can be selected only from members of the active chat', function (
         ->call('mentionColleague', $colleague->id)
         ->assertSet('messageBody', 'Привет, @Борис ')
         ->call('sendMessage')
-        ->assertSee('data-test="message-mentions"', false)
+        ->assertSee('data-test="message-mention-link"', false)
         ->assertSet('selectedMentionIds', []);
 
     $message = $chat->messages()->firstOrFail();
     expect($message->body)->toBe('Привет, @Борис');
     expect($message->mentions()->pluck('users.id')->all())->toBe([$colleague->id]);
+    $notification = $colleague->notifications()->firstOrFail();
+    expect($notification->type)->toBe(ChatMentioned::class)
+        ->and($notification->data['message_id'])->toBe($message->id)
+        ->and($notification->data['author_name'])->toBe('Алиса');
+
+    $this->get(route('chat.members.show', ['chat' => $chat, 'user' => $colleague]))
+        ->assertOk()
+        ->assertSee('Борис');
+
+    Livewire::test('pages::chat')
+        ->call('showMentionProfile', $colleague->id)
+        ->assertSet('showMemberModal', true)
+        ->assertSee('Открыть профиль');
 
     Livewire::test('pages::chat')->call('mentionColleague', $outsider->id)->assertForbidden();
     Livewire::test('pages::chat')
@@ -110,6 +124,80 @@ test('mentions can be selected only from members of the active chat', function (
         ->set('selectedMentionIds', [$outsider->id])
         ->call('sendMessage')
         ->assertForbidden();
+
+    foreach (range(1, 31) as $number) {
+        $chat->messages()->create(['user_id' => $user->id, 'body' => "Позднее сообщение {$number}"]);
+    }
+
+    $this->actingAs($colleague);
+    Livewire::test('pages::chat')
+        ->assertSee('Вас упомянул Алиса')
+        ->call('openMentionNotification', $notification->id)
+        ->assertSet('activeChatId', $chat->id)
+        ->assertSet('visibleMessageCount', 60)
+        ->assertSee('data-test="message-mention-link"', false)
+        ->assertDispatched('focus-chat-message');
+
+    expect($notification->fresh()->read_at)->not->toBeNull();
+
+    $this->actingAs($outsider);
+    $this->get(route('chat.members.show', ['chat' => $chat, 'user' => $colleague]))->assertNotFound();
+    Livewire::test('pages::chat')->call('openMentionNotification', $notification->id)->assertNotFound();
+});
+
+test('plain at text does not create a mention notification', function () {
+    $user = User::factory()->create();
+    $colleague = User::factory()->create(['name' => 'Борис']);
+    $chat = chatWithMembers($user, $colleague);
+    $this->actingAs($user);
+
+    Livewire::test('pages::chat')
+        ->call('sendMessage', 'Привет, @Борис')
+        ->assertDontSee('data-test="message-mention-link"', false);
+
+    expect($chat->messages()->firstOrFail()->mentions()->count())->toBe(0)
+        ->and($colleague->notifications()->count())->toBe(0);
+});
+
+test('colleagues with the same name get distinct mention links and notifications', function () {
+    $sender = User::factory()->create(['name' => 'Алиса']);
+    $first = User::factory()->create(['name' => 'Борис']);
+    $second = User::factory()->create(['name' => 'Борис']);
+    $chat = chatWithMembers($sender, $first, $second);
+    $this->actingAs($sender);
+
+    $component = Livewire::test('pages::chat')
+        ->call('mentionColleague', $first->id)
+        ->call('mentionColleague', $second->id)
+        ->call('sendMessage');
+
+    $message = $chat->messages()->firstOrFail();
+    $segments = collect($component->instance()->messages['data'][0]['body_segments']);
+
+    expect($message->body)->toBe('@Борис @Борис')
+        ->and($segments->pluck('user_id')->filter()->values()->all())->toBe([$first->id, $second->id])
+        ->and($first->notifications()->count())->toBe(1)
+        ->and($second->notifications()->count())->toBe(1);
+
+    $component
+        ->assertSee(route('chat.members.show', ['chat' => $chat, 'user' => $first]), false)
+        ->assertSee(route('chat.members.show', ['chat' => $chat, 'user' => $second]), false);
+});
+
+test('one mention token cannot notify two colleagues with the same name', function () {
+    $sender = User::factory()->create();
+    $first = User::factory()->create(['name' => 'Борис']);
+    $second = User::factory()->create(['name' => 'Борис']);
+    $chat = chatWithMembers($sender, $first, $second);
+    $this->actingAs($sender);
+
+    Livewire::test('pages::chat')
+        ->set('selectedMentionIds', [$first->id, $second->id])
+        ->call('sendMessage', 'Привет, @Борис');
+
+    expect($chat->messages()->firstOrFail()->mentions()->pluck('users.id')->all())->toBe([$first->id])
+        ->and($first->notifications()->count())->toBe(1)
+        ->and($second->notifications()->count())->toBe(0);
 });
 
 test('files cannot be sent to another user chat by changing the public id', function () {

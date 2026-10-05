@@ -40,6 +40,6 @@ class Message extends Model
     /** @return BelongsToMany<User, $this> */
     public function mentions(): BelongsToMany
     {
-        return $this->belongsToMany(User::class, 'message_mentions');
+        return $this->belongsToMany(User::class, 'message_mentions')->orderBy('message_mentions.id');
     }
 }
