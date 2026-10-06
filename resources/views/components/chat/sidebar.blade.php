@@ -17,19 +17,25 @@
     $mentionUnreadCount = collect($mentionNotifications)->where('read', false)->count();
 @endphp
 
-<div class="flex h-full min-h-0 flex-col">
+<div class="relative flex h-full min-h-0 flex-col">
     {{-- Шапка --}}
-    <div class="flex items-center gap-1 border-b border-zinc-200 px-3 py-3 dark:border-zinc-700">
+    <div class="flex items-center gap-2 px-4 pb-2 pt-4 lg:gap-1 lg:border-b lg:border-zinc-200 lg:px-3 lg:py-3 dark:lg:border-zinc-700">
+        <div class="lg:hidden">
+            <x-chat.user-menu mobile />
+        </div>
+
         <a
             href="{{ route('dashboard') }}"
             wire:navigate
-            class="flex min-w-0 items-center gap-2 rounded-lg p-1 hover:bg-zinc-800/5 dark:hover:bg-white/10"
+            class="hidden min-w-0 items-center gap-2 rounded-lg p-1 hover:bg-zinc-800/5 lg:flex dark:hover:bg-white/10"
         >
             <x-app-logo-icon class="size-6" />
             <span class="truncate text-sm font-semibold text-zinc-900 dark:text-white">{{ config('app.name', 'Laravel') }}</span>
         </a>
 
-        <flux:tooltip :content="__('Новый чат')" class="ms-auto">
+        <h1 class="min-w-0 flex-1 truncate text-2xl font-bold tracking-tight text-zinc-900 lg:hidden dark:text-white">{{ __('Чаты') }}</h1>
+
+        <flux:tooltip :content="__('Новый чат')" class="ms-auto hidden lg:block">
             <flux:button
                 size="sm"
                 variant="ghost"
@@ -43,7 +49,7 @@
         <div wire:poll.15s>
             <flux:dropdown position="bottom" align="end">
                 <span class="relative inline-flex">
-                    <flux:button size="sm" variant="ghost" icon="bell" square :aria-label="__('Упоминания')" data-test="mention-notifications-button" />
+                    <flux:button size="sm" variant="ghost" icon="bell" square :aria-label="__('Упоминания')" class="text-sky-600 dark:text-sky-400" data-test="mention-notifications-button" />
                     @if ($mentionUnreadCount > 0)
                         <span class="pointer-events-none absolute -end-1 -top-1 flex min-w-4 items-center justify-center rounded-full bg-red-600 px-1 text-[10px] leading-4 text-white">{{ $mentionUnreadCount }}</span>
                     @endif
@@ -65,7 +71,7 @@
     </div>
 
     {{-- Поиск --}}
-    <div class="px-3 pt-3">
+    <div class="px-4 pt-2 lg:px-3 lg:pt-3 [&_[data-flux-input]]:rounded-xl">
         <flux:input
             wire:model.live.debounce.300ms="search"
             size="sm"
@@ -77,16 +83,16 @@
     </div>
 
     {{-- Фильтры --}}
-    <div class="flex items-center gap-1 px-3 py-3">
+    <div class="flex items-center gap-1 border-b border-zinc-100 px-4 pt-2 lg:border-0 lg:px-3 lg:py-3 dark:border-zinc-800">
         @foreach ($tabs as $tab)
             <button
                 type="button"
                 wire:key="filter-{{ $tab['key'] }}"
                 wire:click="setFilter('{{ $tab['key'] }}')"
                 @class([
-                    'flex flex-1 items-center justify-center gap-1.5 rounded-lg px-2 py-1.5 text-xs font-medium transition',
-                    'bg-white text-zinc-900 shadow-xs dark:bg-white/15 dark:text-white' => $chatFilter === $tab['key'],
-                    'text-zinc-500 hover:bg-zinc-800/5 dark:text-zinc-400 dark:hover:bg-white/10' => $chatFilter !== $tab['key'],
+                    'flex flex-1 items-center justify-center gap-1.5 border-b-2 px-2 py-2.5 text-xs font-semibold transition lg:rounded-lg lg:border-b-0 lg:py-1.5',
+                    'border-sky-500 text-sky-600 lg:bg-white lg:text-zinc-900 lg:shadow-xs dark:text-sky-400 dark:lg:bg-white/15 dark:lg:text-white' => $chatFilter === $tab['key'],
+                    'border-transparent text-zinc-500 hover:bg-zinc-800/5 dark:text-zinc-400 dark:hover:bg-white/10' => $chatFilter !== $tab['key'],
                 ])
             >
                 {{ $tab['label'] }}
@@ -96,57 +102,41 @@
     </div>
 
     {{-- Список чатов --}}
-    <div class="min-h-0 flex-1 overflow-y-auto px-2 pb-2">
+    <div class="min-h-0 flex-1 overflow-y-auto pb-20 lg:px-2 lg:pb-2" data-test="chat-list">
         @forelse ($chats as $chat)
             <div class="group relative" wire:key="chat-{{ $chat['id'] }}">
                 <button
                     type="button"
                     wire:click="selectChat({{ $chat['id'] }})"
                     @class([
-                        'flex w-full items-start gap-3 rounded-xl px-2 py-2 text-start transition',
-                        'bg-zinc-200/70 dark:bg-white/10' => $chat['id'] === $activeChatId,
-                        'hover:bg-zinc-800/5 dark:hover:bg-white/5' => $chat['id'] !== $activeChatId,
+                        'flex w-full items-center gap-3 px-4 py-3 text-start transition lg:items-start lg:rounded-xl lg:px-2 lg:py-2',
+                        'hover:bg-sky-50/70 lg:bg-zinc-200/70 lg:hover:bg-zinc-200/70 dark:hover:bg-white/5 dark:lg:bg-white/10' => $chat['id'] === $activeChatId,
+                        'hover:bg-zinc-50 lg:hover:bg-zinc-800/5 dark:hover:bg-white/5' => $chat['id'] !== $activeChatId,
                     ])
                 >
                     {{-- Аватар --}}
                     <span class="relative shrink-0">
-                        <x-chat.avatar :chat="$chat" />
-
-                        {{-- @if ($chat['type'] === 'direct' && $chat['online'])
-                            <span class="absolute -end-0.5 -bottom-0.5 size-3 rounded-full border-2 border-zinc-50 bg-green-500 dark:border-zinc-900"></span>
-                        @endif --}}
+                        <x-chat.avatar :chat="$chat" size="lg" class="lg:hidden" />
+                        <x-chat.avatar :chat="$chat" class="hidden lg:inline-flex" />
                     </span>
 
                     {{-- Текст --}}
-                    <span class="min-w-0 flex-1">
+                    <span class="min-w-0 flex-1 border-b border-zinc-100 py-1 lg:border-0 lg:py-0 dark:border-zinc-800">
                         <span class="flex items-center gap-1.5">
-                            <span class="truncate text-sm font-medium text-zinc-900 dark:text-white">{{ $chat['name'] }}</span>
-                            {{-- @if ($chat['pinned'])
-                                <flux:icon.map-pin class="size-3.5 shrink-0 text-zinc-400" />
-                            @endif --}}
-
-                            {{-- @if ($chat['muted'])
-                                <flux:icon.bell-slash class="size-3.5 shrink-0 text-zinc-400" />
-                            @endif --}}
-
-                            {{-- <span @class([
-                                'ms-auto shrink-0 text-[11px]',
-                                'font-semibold text-zinc-900 dark:text-white' => $chat['unread'] > 0,
-                                'text-zinc-400' => $chat['unread'] === 0,
-                            ])>{{ $chat['last_message']['at'] }}</span> --}}
+                            <span class="min-w-0 flex-1 truncate text-[15px] font-semibold text-zinc-900 lg:text-sm lg:font-medium dark:text-white">{{ $chat['name'] }}</span>
+                            @if ($chat['last_message'])
+                                <span class="shrink-0 text-[11px] text-zinc-400 lg:hidden">{{ $chat['last_message']['time'] }}</span>
+                            @endif
                         </span>
 
-                        <span class="mt-0.5 flex items-center gap-2">
-                            {{-- <span class="truncate text-xs text-zinc-500 dark:text-zinc-400">
-                                @if ($chat['type'] === 'group')
-                                    {{ $chat['last_message']['author'] }}:
+                        <span class="mt-1 flex min-w-0 items-center gap-2 lg:mt-0.5">
+                            <span class="min-w-0 flex-1 truncate text-[13px] text-zinc-500 lg:text-xs dark:text-zinc-400">
+                                @if ($chat['last_message'])
+                                    @if ($chat['type'] === 'group')<span class="text-sky-600 dark:text-sky-400">{{ $chat['last_message']['author'] }}:</span> @endif{{ $chat['last_message']['text'] }}
+                                @else
+                                    {{ __('Сообщений пока нет') }}
                                 @endif
-                                {{ $chat['last_message']['text'] }}
-                            </span> --}}
-
-                            {{-- @if ($chat['unread'] > 0)
-                                <span class="ms-auto flex size-5 shrink-0 items-center justify-center rounded-full bg-accent text-[11px] font-semibold text-accent-foreground">{{ $chat['unread'] }}</span>
-                            @endif --}}
+                            </span>
                         </span>
                     </span>
                 </button>
@@ -157,11 +147,6 @@
                         <flux:button size="xs" variant="ghost" icon="ellipsis-horizontal" square />
 
                         <flux:menu>
-                            {{-- <flux:menu.item icon="check" wire:click="selectChat({{ $chat['id'] }})">
-                                {{ $chat['unread'] > 0 ? __('Отметить прочитанным') : __('Открыть чат') }}
-                            </flux:menu.item> --}}
-                            {{-- <flux:menu.item icon="bell-slash">{{ $chat['muted'] ? __('Включить уведомления') : __('Отключить уведомления') }}</flux:menu.item> --}}
-                            {{-- <flux:menu.item icon="map-pin">{{ $chat['pinned'] ? __('Открепить') : __('Закрепить') }}</flux:menu.item> --}}
                             @if ($chat['type'] === 'group')
                                 <flux:menu.item icon="user-plus" data-test="invite-colleague-menu-item">{{ __('Пригласить коллегу') }}</flux:menu.item>
                             @endif
@@ -179,44 +164,15 @@
         @endforelse
     </div>
 
-    {{-- Текущий пользователь --}}
-    <div class="flex items-center gap-2 border-t border-zinc-200 p-2 dark:border-zinc-700">
-        <flux:dropdown position="top" align="start" class="min-w-0 flex-1">
-            <flux:profile
-                class="w-full"
-                :name="auth()->user()->name"
-                :initials="auth()->user()->initials()"
-                icon:trailing="chevrons-up-down"
-                data-test="sidebar-menu-button"
-            />
+    {{-- Новый чат на мобильных --}}
+    <div class="absolute bottom-5 end-5 z-10 lg:hidden">
+        <button type="button" wire:click="$set('showNewChatModal', true)" class="flex size-14 items-center justify-center rounded-full bg-sky-500 text-white shadow-lg shadow-sky-500/25 transition hover:bg-sky-600" aria-label="{{ __('Новый чат') }}" data-test="new-chat-button-mobile">
+            <flux:icon.pencil-square class="size-6" />
+        </button>
+    </div>
 
-            <flux:menu>
-                <div class="flex items-center gap-2 px-1 py-1.5 text-start text-sm">
-                    <flux:avatar :name="auth()->user()->name" :initials="auth()->user()->initials()" />
-                    <div class="grid flex-1 text-start text-sm leading-tight">
-                        <flux:heading class="truncate">{{ auth()->user()->name }}</flux:heading>
-                        <flux:text class="truncate">{{ auth()->user()->email }}</flux:text>
-                    </div>
-                </div>
-
-                <flux:menu.separator />
-
-                <x-theme-menu-item />
-
-                <form method="POST" action="{{ route('logout') }}" class="w-full">
-                    @csrf
-                    <flux:menu.item
-                        as="button"
-                        type="submit"
-                        icon="arrow-right-start-on-rectangle"
-                        class="w-full cursor-pointer"
-                        data-test="logout-button"
-                    >
-                        {{ __('Log out') }}
-                    </flux:menu.item>
-                </form>
-            </flux:menu>
-        </flux:dropdown>
+    <div class="hidden items-center gap-2 border-t border-zinc-200 p-2 lg:flex dark:border-zinc-700">
+        <x-chat.user-menu />
 
         @if ($unreadTotal > 0)
             <flux:tooltip :content="__('Отметить всё прочитанным')">

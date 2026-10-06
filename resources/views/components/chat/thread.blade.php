@@ -5,7 +5,7 @@
 ])
 
 <div
-    class="min-h-0 flex-1 overflow-y-auto bg-zinc-50 px-3 py-4 sm:px-6 dark:bg-zinc-800/60"
+    class="min-h-0 flex-1 overflow-y-auto bg-[#e9f0eb] px-2 py-4 sm:px-6 lg:bg-zinc-50 dark:bg-[#101b26] dark:lg:bg-zinc-800/60"
     x-data="{ previousHeight: 0 }"
     x-init="$nextTick(() => { $el.scrollTop = $el.scrollHeight })"
     @message-sent.window="$nextTick(() => { $el.scrollTop = $el.scrollHeight })"
@@ -14,7 +14,7 @@
     @focus-chat-message.window="$nextTick(() => document.getElementById('chat-message-' + $event.detail.id)?.scrollIntoView({ block: 'center' }))"
     data-test="chat-thread"
 >
-    <div class="mx-auto flex max-w-3xl flex-col gap-4">
+    <div class="mx-auto flex max-w-3xl flex-col gap-2.5 lg:gap-4">
         @if (! $showMessageSearch && count($messages['data']) < $messages['total'])
             <button type="button" wire:click="loadOlderMessages" x-on:click="previousHeight = $el.closest('[data-test=chat-thread]').scrollHeight" class="mx-auto rounded-lg px-3 py-1.5 text-xs text-zinc-500 hover:bg-zinc-200/70 dark:hover:bg-zinc-700" data-test="load-older-messages">
                 {{ __('Загрузить предыдущие сообщения') }}
@@ -22,9 +22,9 @@
         @endif
 
         {{-- Начало переписки --}}
-        <div class="flex items-center gap-3 py-2">
+        <div class="flex items-center justify-center gap-3 py-2">
             <flux:separator class="flex-1" />
-            <span class="text-[11px] font-medium tracking-wide text-zinc-400 uppercase">{{ __('Начало переписки') }}</span>
+            <span class="rounded-full bg-zinc-700/40 px-3 py-1 text-[11px] font-medium text-white lg:bg-transparent lg:px-0 lg:py-0 lg:tracking-wide lg:text-zinc-400 lg:uppercase dark:bg-white/15 dark:lg:bg-transparent">{{ __('Начало переписки') }}</span>
             <flux:separator class="flex-1" />
         </div>
 
@@ -33,7 +33,7 @@
             @if ($message['show_day'])
                 <div class="flex items-center gap-3 py-2" wire:key="day-{{ $chat['id'] }}-{{ $message['id'] }}">
                     <flux:separator class="flex-1" />
-                    {{-- <span class="text-[11px] font-medium tracking-wide text-zinc-400 uppercase">{{ $message['day'] }}</span> --}}
+                    <span class="rounded-full bg-zinc-700/40 px-3 py-1 text-[11px] font-medium text-white lg:hidden dark:bg-white/15">{{ \Illuminate\Support\Carbon::parse($message['created_at'])->format('d.m.Y') }}</span>
                     <flux:separator class="flex-1" />
                 </div>
             @endif

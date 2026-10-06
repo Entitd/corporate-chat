@@ -4,7 +4,7 @@
     'showDetails' => false,
 ])
 
-<div class="flex h-16 shrink-0 items-center gap-3 border-b border-zinc-200 bg-white px-3 dark:border-zinc-700 dark:bg-zinc-800">
+<div class="flex h-16 shrink-0 items-center gap-2 border-b border-zinc-200 bg-white px-2 lg:gap-3 lg:px-3 dark:border-zinc-700 dark:bg-zinc-800">
     {{-- Возврат к списку чатов (мобильные) --}}
     <flux:button
         class="lg:hidden"
@@ -13,6 +13,7 @@
         icon="arrow-left"
         square
         wire:click="backToList"
+        :aria-label="__('К списку чатов')"
         data-test="back-to-chats"
     />
 
@@ -27,7 +28,7 @@
 
     <div class="min-w-0 flex-1">
         <div class="flex items-center gap-2">
-            <h1 class="truncate text-sm font-semibold text-zinc-900 dark:text-white">{{ $chat['name'] }}</h1>
+            <h1 class="truncate text-[15px] font-semibold text-zinc-900 lg:text-sm dark:text-white">{{ $chat['name'] }}</h1>
 
             @if ($chat['type'] === 'group')
                 <span class="max-sm:hidden">
@@ -36,13 +37,13 @@
             @endif
         </div>
 
-        <p class="truncate text-xs text-zinc-500 dark:text-zinc-400">
+        <p @class(['truncate text-xs text-zinc-500 dark:text-zinc-400', 'lg:hidden' => ! filled($chat['typing'] ?? null)])>
             @if (filled($chat['typing'] ?? null))
                 <span class="text-green-600 dark:text-green-400">{{ $chat['typing'] }} {{ __('печатает…') }}</span>
             @elseif ($chat['type'] === 'group')
-            {{-- {{ $chat['subtitle'] }} -- }}
-            {{-- @else
-                {{ $chat['presence'] ?? $chat['subtitle'] }} --}}
+                {{ __(':count участников', ['count' => $participantsCount]) }}
+            @else
+                {{ __('Личный чат') }}
             @endif
         </p>
     </div>
@@ -65,7 +66,7 @@
             </flux:tooltip>
         </div>
 
-        <flux:tooltip :content="__('О чате')">
+        <flux:tooltip :content="__('О чате')" class="hidden lg:block">
             <flux:button
                 size="sm"
                 variant="ghost"

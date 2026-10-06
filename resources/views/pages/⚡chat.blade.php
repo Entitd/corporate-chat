@@ -692,41 +692,31 @@ new #[Layout('layouts::chat')] #[Title('Чат')] class extends Component
      */
     private function demoChats(): array
     {
-        // $chats = Chat::users()->all()->toArray();
-        $chats = auth()->user()->chats()->get()->toArray();
+        return auth()->user()->chats()
+            ->with(['users:id,name', 'latestMessage.user:id,name'])
+            ->get()
+            ->sortByDesc(fn (Chat $chat): int => $chat->latestMessage?->id ?? 0)
+            ->map(function (Chat $chat): array {
+                $interlocutor = $chat->type === 'direct'
+                    ? $chat->users->firstWhere('id', '!=', auth()->id())
+                    : null;
+                $latestMessage = $chat->latestMessage;
+                $chatData = $chat->attributesToArray();
 
-        foreach ($chats as $key => $chat) {
-            if (($chat['type'] ?? 'direct') === 'direct') {
-                // Ищем среди участников чата того, чей ID НЕ совпадает с вашим
+                $chatData['name'] = $chat->type === 'direct'
+                    ? ($interlocutor?->name ?? __('Пустой чат'))
+                    : ($chat->name ?: __('Групповой чат'));
+                $chatData['last_message'] = $latestMessage ? [
+                    'text' => $latestMessage->body ?: __('Вложение'),
+                    'author' => $latestMessage->user_id === auth()->id() ? __('Вы') : $latestMessage->user?->name,
+                    'time' => $latestMessage->created_at->isToday()
+                        ? $latestMessage->created_at->format('H:i')
+                        : $latestMessage->created_at->format('d.m'),
+                ] : null;
 
-                // dd($chat);
-                $chat = Chat::find($chat['id']);
-
-                // Находим первого участника, чей ID не равен ID текущего пользователя
-                $interlocutor = $chat->users->firstWhere('id', '!=', auth()->id());
-
-                // Получаем его имя (или ставим заглушку, если в чате пока никого нет)
-                $interlocutorName = $interlocutor ? $interlocutor->name : 'Пустой чат';
-                // dd($interlocutorName);
-
-                // $interlocutor ;
-                if ($interlocutor) {
-                    // Заменяем технический title чата на имя собеседника
-                    $chats[$key]['name'] = $interlocutor['name'];
-
-                    // (Опционально) Если в массиве чата есть аватарка, меняем и её
-                    if (isset($interlocutor['avatar'])) {
-                        $chats[$key]['avatar'] = $interlocutor['avatar'];
-                    }
-                } else {
-                    $chats[$key]['name'] = $interlocutorName;
-                }
-            } else {
-                $chats[$key]['name'] = $chat['name'] ?: __('Групповой чат');
-            }
-        }
-
-        return $chats;
+                return $chatData;
+            })
+            ->all();
     }
 
     /**
@@ -872,7 +862,7 @@ new #[Layout('layouts::chat')] #[Title('Чат')] class extends Component
 
 <div class="flex h-dvh w-full overflow-hidden bg-white dark:bg-zinc-800">
     {{-- Список чатов --}}
-    <aside class="{{ $showChatList ? 'flex w-full' : 'hidden' }} shrink-0 flex-col border-e border-zinc-200 bg-zinc-50 lg:flex lg:w-80 xl:w-[22rem] dark:border-zinc-700 dark:bg-zinc-900">
+    <aside class="{{ $showChatList ? 'flex w-full' : 'hidden' }} shrink-0 flex-col border-e border-zinc-200 bg-white lg:flex lg:w-80 lg:bg-zinc-50 xl:w-[22rem] dark:border-zinc-700 dark:bg-zinc-900">
         <x-chat.sidebar
             :chats="$this->chats"
             :active-chat-id="$activeChatId"

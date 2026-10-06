@@ -24,15 +24,15 @@ test('participant can search messages only in the open chat and close the search
 
     $this->actingAs($user);
 
-    Livewire::test('pages::chat')
+    $component = Livewire::test('pages::chat')
         ->call('toggleMessageSearch')
         ->assertSet('showMessageSearch', true)
-        ->set('messageSearch', 'ОТЧЁТ')
-        ->assertSee('Нужен отчёт за квартал')
-        ->assertDontSee('Обсудим встречу')
-        ->assertDontSee('Удалённый отчёт')
-        ->assertDontSee('Отчёт в другом чате')
-        ->call('toggleMessageSearch')
+        ->set('messageSearch', 'ОТЧЁТ');
+
+    expect(array_column($component->instance()->messages['data'], 'body'))
+        ->toBe(['Нужен отчёт за квартал']);
+
+    $component->call('toggleMessageSearch')
         ->assertSet('messageSearch', '')
         ->assertSee('Обсудим встречу');
 });
@@ -75,15 +75,19 @@ test('search results can be viewed beyond the first page', function () {
 
     $this->actingAs($user);
 
-    Livewire::test('pages::chat')
+    $component = Livewire::test('pages::chat')
         ->call('toggleMessageSearch')
         ->set('messageSearch', 'отчёт')
-        ->assertSee('Найдено: 31')
-        ->assertDontSee('Отчёт 31')
-        ->call('changeMessagePage', 2)
-        ->assertSet('messagePage', 2)
-        ->assertSee('Отчёт 31')
-        ->assertDontSee('Отчёт 1');
+        ->assertSee('Найдено: 31');
+
+    expect(array_column($component->instance()->messages['data'], 'body'))
+        ->not->toContain('Отчёт 31');
+
+    $component->call('changeMessagePage', 2)->assertSet('messagePage', 2);
+
+    expect(array_column($component->instance()->messages['data'], 'body'))
+        ->toContain('Отчёт 31')
+        ->not->toContain('Отчёт 1');
 });
 
 test('about a direct chat shows the colleague name and both members', function () {
@@ -120,4 +124,30 @@ test('chat page handles an empty chat list', function () {
     $this->actingAs(User::factory()->create());
 
     $this->get(route('chat.index'))->assertOk()->assertSee('Выберите чат');
+});
+
+test('chat list shows the latest visible message and supports mobile navigation', function () {
+    $user = User::factory()->create();
+    $colleague = User::factory()->create(['name' => 'Анна']);
+    $chat = Chat::create(['type' => 'direct']);
+    $chat->users()->attach([$user->id, $colleague->id]);
+    $chat->messages()->create(['user_id' => $colleague->id, 'body' => 'Первое сообщение']);
+    $chat->messages()->create(['user_id' => $user->id, 'body' => 'Последний ответ']);
+    $chat->messages()->create(['user_id' => $colleague->id, 'body' => 'Удалённое сообщение'])->delete();
+    $emptyChat = createChatFor($user);
+
+    $this->actingAs($user);
+
+    $component = Livewire::test('pages::chat')
+        ->assertSee('Последний ответ')
+        ->assertDontSee('Удалённое сообщение')
+        ->assertSet('showChatList', true);
+
+    expect(array_column($component->instance()->chats, 'id'))->toBe([$chat->id, $emptyChat->id]);
+
+    $component
+        ->call('selectChat', $chat->id)
+        ->assertSet('showChatList', false)
+        ->call('backToList')
+        ->assertSet('showChatList', true);
 });

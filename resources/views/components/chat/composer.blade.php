@@ -6,7 +6,7 @@
 ])
 
 <div
-    class="shrink-0 border-t border-zinc-200 bg-white px-3 py-3 dark:border-zinc-700 dark:bg-zinc-800"
+    class="shrink-0 border-t border-zinc-200 bg-white px-2 pb-[max(0.75rem,env(safe-area-inset-bottom))] pt-2 lg:px-3 lg:py-3 dark:border-zinc-700 dark:bg-zinc-800"
     x-data="{ sending: false, uploading: false }"
     @mention-inserted.window="$nextTick(() => $refs.messageInput?.focus())"
     x-on:livewire-upload-start="uploading = true"
@@ -57,7 +57,7 @@
                     <flux:button size="sm" variant="ghost" icon="paper-clip" square x-on:click="$refs.chatFileInput.click()" data-test="attach-file-button" />
                 </flux:tooltip>
 
-                <flux:tooltip :content="__('Эмодзи')">
+                <flux:tooltip :content="__('Эмодзи')" class="hidden lg:block">
                     <flux:button size="sm" variant="ghost" icon="face-smile" square data-test="emoji-button" />
                 </flux:tooltip>
 
@@ -89,7 +89,7 @@
             />
         </div>
 
-        <p class="mt-2 px-1 text-[11px] text-zinc-400">
+        <p class="mt-2 hidden px-1 text-[11px] text-zinc-400 lg:block">
             {{ __('Enter — отправить, Shift + Enter — новая строка') }}
             {{ __('· до 3 файлов по 2 МБ') }}
 

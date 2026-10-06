@@ -9,18 +9,18 @@
     $author = $own ? auth()->user()->name : $message['user']['name'];
 @endphp
 
-<div {{ $attributes->class(['flex items-end gap-2.5', 'flex-row-reverse' => $own]) }}>
+<div {{ $attributes->class(['flex items-end gap-1.5 lg:gap-2.5', 'flex-row-reverse' => $own]) }}>
     {{-- Аватар автора --}}
     @unless ($own)
         @if ($message['first_of_group'])
-            <flux:avatar class="mb-5 shrink-0" :name="$author" color="auto" size="sm" />
+            <flux:avatar class="mb-5 hidden shrink-0 lg:inline-flex" :name="$author" color="auto" size="sm" />
         @else
-            <span class="w-8 shrink-0" aria-hidden="true"></span>
+            <span class="hidden w-8 shrink-0 lg:block" aria-hidden="true"></span>
         @endif
     @endunless
 
     <div @class([
-        'flex min-w-0 max-w-[min(38rem,85%)] flex-col gap-1',
+        'flex min-w-0 max-w-[85%] flex-col gap-1 lg:max-w-[min(38rem,85%)]',
         'items-end' => $own,
         'items-start' => ! $own,
     ])>
@@ -42,12 +42,12 @@
 
         {{-- Пузырь сообщения --}}
         <div @class([
-            'w-fit max-w-full rounded-2xl px-3.5 py-2.5 text-sm shadow-xs',
-            'bg-accent text-accent-foreground' => $own,
-            'bg-zinc-100 text-zinc-800 dark:bg-zinc-700/60 dark:text-zinc-100' => ! $own,
+            'w-fit max-w-full rounded-2xl px-3 py-2 text-sm shadow-xs lg:px-3.5 lg:py-2.5',
+            'rounded-br-md bg-[#d9fdd3] text-zinc-900 lg:rounded-br-2xl lg:bg-accent lg:text-accent-foreground dark:bg-[#334d42] dark:text-white dark:lg:bg-accent dark:lg:text-accent-foreground' => $own,
+            'rounded-bl-md bg-white text-zinc-800 lg:rounded-bl-2xl lg:bg-zinc-100 dark:bg-zinc-700 dark:text-zinc-100 dark:lg:bg-zinc-700/60' => ! $own,
         ])>
             @if (filled($message['body']))
-                <p class="break-words whitespace-pre-line">@foreach ($message['body_segments'] as $segment)@if ($segment['user_id'])<a href="{{ route('chat.members.show', ['chat' => $message['chat_id'], 'user' => $segment['user_id']]) }}" wire:click.prevent="showMentionProfile({{ $segment['user_id'] }})" @class(['rounded px-0.5 font-semibold underline underline-offset-2 hover:opacity-75', 'bg-white/20 text-accent-foreground' => $own, 'bg-blue-500/15 text-blue-700 dark:text-blue-300' => ! $own]) data-test="message-mention-link">{{ $segment['text'] }}</a>@else{{ $segment['text'] }}@endif@endforeach</p>
+                <p class="break-words whitespace-pre-line">@foreach ($message['body_segments'] as $segment)@if ($segment['user_id'])<a href="{{ route('chat.members.show', ['chat' => $message['chat_id'], 'user' => $segment['user_id']]) }}" wire:click.prevent="showMentionProfile({{ $segment['user_id'] }})" @class(['rounded px-0.5 font-semibold underline underline-offset-2 hover:opacity-75', 'bg-white/20 text-sky-700 lg:text-accent-foreground dark:text-sky-300 dark:lg:text-accent-foreground' => $own, 'bg-blue-500/15 text-blue-700 dark:text-blue-300' => ! $own]) data-test="message-mention-link">{{ $segment['text'] }}</a>@else{{ $segment['text'] }}@endif@endforeach</p>
             @endif
 
             {{-- Вложения --}}
