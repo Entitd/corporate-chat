@@ -7,9 +7,10 @@
 
 <div
     class="shrink-0 border-t border-zinc-200 bg-white px-2 pb-[max(0.75rem,env(safe-area-inset-bottom))] pt-2 lg:px-3 lg:py-3 dark:border-zinc-700 dark:bg-zinc-800"
-    x-data="{ sending: false, uploading: false }"
+    x-data="{ sending: false, uploading: false, uploadProgress: 0 }"
     @mention-inserted.window="$nextTick(() => $refs.messageInput?.focus())"
-    x-on:livewire-upload-start="uploading = true"
+    x-on:livewire-upload-start="uploading = true; uploadProgress = 0"
+    x-on:livewire-upload-progress="uploadProgress = $event.detail.progress"
     x-on:livewire-upload-finish="uploading = false"
     x-on:livewire-upload-error="uploading = false"
 >
@@ -45,7 +46,12 @@
             </div>
         @endif
 
-        <p wire:loading wire:target="pendingFiles" class="mb-2 text-xs text-zinc-500">{{ __('Загрузка файла…') }}</p>
+        <div x-show="uploading" x-cloak style="display: none" class="mb-2 space-y-1" data-test="chat-file-upload-progress">
+            <p class="text-xs text-zinc-500 dark:text-zinc-400">{{ __('Загрузка файлов') }} · <span x-text="uploadProgress + '%'">0%</span></p>
+            <div class="h-1.5 overflow-hidden rounded-full bg-zinc-200 dark:bg-zinc-700" role="progressbar" aria-label="{{ __('Загрузка файлов') }}" aria-valuemin="0" aria-valuemax="100" x-bind:aria-valuenow="uploadProgress">
+                <div class="h-full rounded-full bg-sky-500 transition-[width]" x-bind:style="'width: ' + uploadProgress + '%'"> </div>
+            </div>
+        </div>
         @error('pendingFiles') <p class="mb-2 text-xs text-red-600">{{ $message }}</p> @enderror
         @error('pendingFiles.*') <p class="mb-2 text-xs text-red-600">{{ $message }}</p> @enderror
         @error('messageBody') <p class="mb-2 text-xs text-red-600">{{ $message }}</p> @enderror
@@ -91,6 +97,7 @@
 
         <p class="mt-2 hidden px-1 text-[11px] text-zinc-400 lg:block">
             {{ __('Enter — отправить, Shift + Enter — новая строка') }}
+            {{ __('· перетащите файлы сюда или нажмите на скрепку') }}
             {{ __('· до 3 файлов по 2 МБ') }}
 
             @if ($chat['type'] === 'group')

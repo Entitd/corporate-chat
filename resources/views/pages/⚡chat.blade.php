@@ -1068,7 +1068,78 @@ new #[Layout('layouts::chat')] #[Title('Чат')] class extends Component
     }
 }; ?>
 
-<div class="flex h-dvh w-full overflow-hidden bg-white dark:bg-zinc-800">
+<div
+    class="flex h-dvh w-full overflow-hidden bg-white dark:bg-zinc-800"
+    x-data="{
+        dragDepth: 0,
+        draggingFiles: false,
+        dropError: '',
+        dropErrorTimeout: null,
+        hasDraggedFiles(event) {
+            return Array.from(event.dataTransfer?.types ?? []).includes('Files');
+        },
+        canAttachFiles() {
+            return $wire.activeChatId > 0 && (window.innerWidth >= 1024 || !$wire.showChatList);
+        },
+        showDropError(message) {
+            this.dropError = message;
+            clearTimeout(this.dropErrorTimeout);
+            this.dropErrorTimeout = setTimeout(() => this.dropError = '', 5000);
+        },
+        dropFiles(event) {
+            if (!this.hasDraggedFiles(event)) return;
+
+            event.preventDefault();
+            this.dragDepth = 0;
+            this.draggingFiles = false;
+
+            if (!this.canAttachFiles()) {
+                this.showDropError(@js(__('Сначала откройте чат, в который хотите отправить файлы.')));
+                return;
+            }
+
+            const files = Array.from(event.dataTransfer.files);
+            if (files.length === 0) return;
+
+            if (($wire.pendingFiles?.length ?? 0) + files.length > 3) {
+                this.showDropError(@js(__('Можно прикрепить не больше 3 файлов.')));
+                return;
+            }
+
+            if (files.some(file => file.size > 2 * 1024 * 1024)) {
+                this.showDropError(@js(__('Файл должен быть не больше 2 МБ.')));
+                return;
+            }
+
+            const input = this.$el.querySelector('[data-test=chat-file-input]');
+            if (!input) return;
+
+            this.dropError = '';
+            input.files = event.dataTransfer.files;
+            input.dispatchEvent(new Event('change', { bubbles: true }));
+        },
+    }"
+    x-on:dragenter="if (hasDraggedFiles($event)) { $event.preventDefault(); dragDepth++; draggingFiles = true }"
+    x-on:dragover="if (hasDraggedFiles($event)) { $event.preventDefault(); $event.dataTransfer.dropEffect = 'copy' }"
+    x-on:dragleave="if (hasDraggedFiles($event)) { dragDepth = Math.max(0, dragDepth - 1); draggingFiles = dragDepth > 0 }"
+    x-on:drop="dropFiles($event)"
+>
+    <div
+        x-show="draggingFiles"
+        x-cloak
+        style="display: none"
+        class="pointer-events-none fixed inset-0 z-50 flex items-center justify-center bg-sky-500/15 p-4 backdrop-blur-[2px] dark:bg-sky-400/15"
+        data-test="chat-file-drop-overlay"
+    >
+        <div class="flex w-full max-w-md flex-col items-center gap-3 rounded-2xl border-2 border-dashed border-sky-500 bg-white/95 px-6 py-10 text-center shadow-xl dark:border-sky-400 dark:bg-zinc-900/95">
+            <flux:icon.arrow-up-tray class="size-10 text-sky-600 dark:text-sky-400" />
+            <p class="text-lg font-semibold text-zinc-900 dark:text-white" x-text="canAttachFiles() ? @js(__('Перетащите файлы сюда')) : @js(__('Сначала откройте чат'))"></p>
+            <p class="text-sm text-zinc-500 dark:text-zinc-400">{{ __('До 3 файлов по 2 МБ · после загрузки нажмите «Отправить»') }}</p>
+        </div>
+    </div>
+
+    <div x-show="dropError" x-cloak style="display: none" role="alert" x-text="dropError" class="fixed inset-x-4 bottom-6 z-50 mx-auto w-fit max-w-md rounded-xl bg-red-600 px-4 py-3 text-center text-sm font-medium text-white shadow-lg" data-test="chat-file-drop-error"></div>
+
     {{-- Список чатов --}}
     <aside class="{{ $showChatList ? 'flex w-full' : 'hidden' }} shrink-0 flex-col border-e border-zinc-200 bg-white lg:flex lg:w-80 lg:bg-zinc-50 xl:w-[22rem] dark:border-zinc-700 dark:bg-zinc-900">
         <x-chat.sidebar
