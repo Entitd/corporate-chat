@@ -148,9 +148,11 @@
 
                         <flux:menu>
                             @if ($chat['type'] === 'group')
-                                <flux:menu.item icon="user-plus" data-test="invite-colleague-menu-item">{{ __('Пригласить коллегу') }}</flux:menu.item>
+                                <flux:menu.item icon="user-plus" wire:click="openInviteModal({{ $chat['id'] }})" data-test="invite-colleague-menu-item">{{ __('Пригласить коллегу') }}</flux:menu.item>
                             @endif
-                            <flux:menu.item icon="x-mark" variant="danger">{{ __('Покинуть чат') }}</flux:menu.item>
+                            @if ($chat['type'] === 'group')
+                                <flux:menu.item icon="x-mark" variant="danger" wire:click="leaveChat({{ $chat['id'] }})">{{ __('Покинуть чат') }}</flux:menu.item>
+                            @endif
                         </flux:menu>
                     </flux:dropdown>
                 </div>

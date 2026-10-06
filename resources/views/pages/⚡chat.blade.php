@@ -9,6 +9,7 @@ use App\Notifications\ChatMentioned;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Str;
+use Illuminate\Validation\Rule;
 use Livewire\Attributes\Computed;
 use Livewire\Attributes\Layout;
 use Livewire\Attributes\Locked;
@@ -56,14 +57,36 @@ new #[Layout('layouts::chat')] #[Title('Чат')] class extends Component
     /** Модальное окно создания нового чата. */
     public bool $showNewChatModal = false;
 
+    public bool $showInviteModal = false;
+
+    #[Locked]
+    public ?int $inviteChatId = null;
+
+    public ?int $selectedInviteeId = null;
+
+    public string $inviteSearch = '';
+
+    public bool $showRemoveParticipantModal = false;
+
+    #[Locked]
+    public ?int $participantRemovalChatId = null;
+
+    #[Locked]
+    public ?int $participantToRemoveId = null;
+
+    #[Locked]
+    public string $participantToRemoveName = '';
+
     /** Режим создания чата: личный (direct) или групповой (group). */
     public string $newChatMode = 'direct';
 
     /** Поиск коллег в модальном окне нового чата. */
     public string $colleagueSearch = '';
 
-    /** Выбранные коллеги для нового группового чата. */
+    /** Выбранные коллеги для нового чата. */
     public array $selectedColleagues = [];
+
+    public string $groupName = '';
 
     /** Чаты, которые пользователь уже открыл в этой сессии. */
     public array $readChatIds = [];
@@ -108,6 +131,10 @@ new #[Layout('layouts::chat')] #[Title('Чат')] class extends Component
         $this->readChatIds = array_values(array_unique([...$this->readChatIds, $chatId]));
         $this->showChatList = false;
         $this->showDetails = false;
+        $this->showRemoveParticipantModal = false;
+        $this->participantRemovalChatId = null;
+        $this->participantToRemoveId = null;
+        $this->participantToRemoveName = '';
         $this->showMemberModal = false;
         $this->profileMemberId = null;
         $this->showMessageSearch = false;
@@ -404,6 +431,88 @@ new #[Layout('layouts::chat')] #[Title('Чат')] class extends Component
         $this->dispatch('show-chat-participants');
     }
 
+    public function openInviteModal(int $chatId): void
+    {
+        auth()->user()->chats()->whereKey($chatId)->where('type', 'group')->firstOrFail();
+
+        $this->inviteChatId = $chatId;
+        $this->selectedInviteeId = null;
+        $this->inviteSearch = '';
+        $this->resetValidation();
+        unset($this->invitableColleagues);
+        $this->showInviteModal = true;
+    }
+
+    public function inviteColleague(): void
+    {
+        $chat = auth()->user()->chats()
+            ->whereKey($this->inviteChatId)
+            ->where('type', 'group')
+            ->firstOrFail();
+
+        $validated = $this->validate([
+            'selectedInviteeId' => ['required', 'integer', 'exists:users,id', Rule::notIn([auth()->id()])],
+        ]);
+
+        $inviteeId = (int) $validated['selectedInviteeId'];
+
+        if ($chat->users()->whereKey($inviteeId)->exists()) {
+            $this->addError('selectedInviteeId', __('Коллега уже состоит в чате.'));
+
+            return;
+        }
+
+        $chat->users()->syncWithoutDetaching([$inviteeId]);
+
+        $this->showInviteModal = false;
+        $this->selectedInviteeId = null;
+        $this->inviteChatId = null;
+        unset($this->participants, $this->invitableColleagues);
+    }
+
+    public function confirmRemoveParticipant(int $userId): void
+    {
+        $chat = $this->ownedGroup($this->activeChatId);
+        $participant = $chat->users()
+            ->whereKey($userId)
+            ->wherePivot('role', 'member')
+            ->firstOrFail();
+
+        $this->participantRemovalChatId = $chat->id;
+        $this->participantToRemoveId = $participant->id;
+        $this->participantToRemoveName = $participant->name;
+        $this->showRemoveParticipantModal = true;
+    }
+
+    public function removeParticipant(): void
+    {
+        abort_unless($this->showRemoveParticipantModal, 404);
+
+        $chat = $this->ownedGroup($this->participantRemovalChatId ?? 0);
+
+        $chat->users()
+            ->whereKey($this->participantToRemoveId)
+            ->wherePivot('role', 'member')
+            ->firstOrFail();
+
+        $chat->users()->detach($this->participantToRemoveId);
+
+        $this->showRemoveParticipantModal = false;
+        $this->participantRemovalChatId = null;
+        $this->participantToRemoveId = null;
+        $this->participantToRemoveName = '';
+        unset($this->participants, $this->invitableColleagues);
+    }
+
+    private function ownedGroup(int $chatId): Chat
+    {
+        return auth()->user()->chats()
+            ->whereKey($chatId)
+            ->where('type', 'group')
+            ->wherePivot('role', 'admin')
+            ->firstOrFail();
+    }
+
     public function toggleMessageSearch(): void
     {
         abort_unless($this->activeChatId && auth()->user()->chats()->whereKey($this->activeChatId)->exists(), 403);
@@ -447,6 +556,83 @@ new #[Layout('layouts::chat')] #[Title('Чат')] class extends Component
 
         $this->newChatMode = $mode;
         $this->selectedColleagues = [];
+        $this->resetValidation();
+    }
+
+    public function selectColleague(int $userId): void
+    {
+        abort_unless(User::query()->whereKey($userId)->whereKeyNot(auth()->id())->exists(), 404);
+
+        $this->selectedColleagues = [$userId];
+    }
+
+    public function createChat(): void
+    {
+        $this->groupName = trim($this->groupName);
+
+        $rules = [
+            'newChatMode' => ['required', 'in:direct,group'],
+            'selectedColleagues' => ['required', 'array', $this->newChatMode === 'direct' ? 'size:1' : 'min:1'],
+            'selectedColleagues.*' => ['required', 'integer', 'distinct', 'exists:users,id', Rule::notIn([auth()->id()])],
+        ];
+
+        if ($this->newChatMode === 'group') {
+            $rules['groupName'] = ['required', 'string', 'max:100'];
+        }
+
+        $validated = $this->validate($rules);
+        $colleagueIds = array_map('intval', $validated['selectedColleagues']);
+
+        $chat = DB::transaction(function () use ($colleagueIds, $validated): Chat {
+            if ($this->newChatMode === 'direct') {
+                $existingChat = Chat::query()
+                    ->where('type', 'direct')
+                    ->whereHas('users', fn ($users) => $users->whereKey(auth()->id()))
+                    ->whereHas('users', fn ($users) => $users->whereKey($colleagueIds[0]))
+                    ->has('users', '=', 2)
+                    ->first();
+
+                if ($existingChat) {
+                    return $existingChat;
+                }
+            }
+
+            $chat = Chat::create([
+                'type' => $this->newChatMode,
+                'name' => $this->newChatMode === 'group' ? trim($validated['groupName']) : null,
+            ]);
+
+            $chat->users()->attach(auth()->id(), ['role' => $this->newChatMode === 'group' ? 'admin' : 'member']);
+            $chat->users()->attach($colleagueIds);
+
+            return $chat;
+        });
+
+        unset($this->chats, $this->activeChat, $this->directCount, $this->groupCount);
+        $this->selectChat($chat->id);
+        $this->chatFilter = 'all';
+        $this->reset('showNewChatModal', 'newChatMode', 'colleagueSearch', 'selectedColleagues', 'groupName');
+    }
+
+    public function leaveChat(int $chatId): void
+    {
+        $chat = auth()->user()->chats()->whereKey($chatId)->where('type', 'group')->firstOrFail();
+
+        $chat->users()->detach(auth()->id());
+        $this->chatFilter = 'all';
+
+        if ($this->activeChatId === $chatId) {
+            $this->activeChatId = auth()->user()->chats()->orderBy('chats.id')->value('chats.id') ?? 0;
+            $this->showChatList = true;
+            $this->showDetails = false;
+            $this->showMessageSearch = false;
+            $this->messageSearch = '';
+            $this->messagePage = 1;
+            $this->visibleMessageCount = 30;
+            $this->reset('messageBody', 'pendingFiles', 'selectedMentionIds', 'showMentionPicker', 'mentionSearch');
+        }
+
+        unset($this->chats, $this->activeChat, $this->messages, $this->participants, $this->sharedFiles, $this->sharedLinks, $this->mentionNotifications, $this->groupCount);
     }
 
     /**
@@ -656,14 +842,25 @@ new #[Layout('layouts::chat')] #[Title('Чат')] class extends Component
         $this->activeChat;
 
         return Chat::findOrFail($this->activeChatId)->users()
+            ->withPivot('role')
             ->orderBy('users.name')
             ->get(['users.id', 'users.name', 'users.title'])
             ->map(fn (User $user): array => [
                 'id' => $user->id,
                 'name' => $user->name,
                 'position' => $user->title ?: __('Сотрудник'),
+                'role' => $user->pivot->role,
             ])
             ->all();
+    }
+
+    #[Computed]
+    public function canRemoveParticipants(): bool
+    {
+        return ($this->activeChat['type'] ?? null) === 'group'
+            && collect($this->participants)->contains(
+                fn (array $participant): bool => $participant['id'] === auth()->id() && $participant['role'] === 'admin',
+            );
     }
 
     /**
@@ -677,12 +874,33 @@ new #[Layout('layouts::chat')] #[Title('Чат')] class extends Component
         $search = mb_strtolower(trim($this->colleagueSearch));
 
         return array_values(array_filter(
-            $this->demoColleagues(),
+            User::query()->where('id', '!=', auth()->id())->get(['id', 'name', 'title'])->toArray(),
             fn (array $colleague): bool => $search === ''
                 || str_contains(mb_strtolower($colleague['name']), $search)
-                || str_contains(mb_strtolower($colleague['position']), $search)
-                || str_contains(mb_strtolower($colleague['department']), $search),
+                || str_contains(mb_strtolower($colleague['title'] ?? ''), $search),
         ));
+    }
+
+    /** @return array<int, array{id: int, name: string, title: string|null}> */
+    #[Computed]
+    public function invitableColleagues(): array
+    {
+        if (! $this->showInviteModal || $this->inviteChatId === null) {
+            return [];
+        }
+
+        $search = trim($this->inviteSearch);
+
+        return User::query()
+            ->whereDoesntHave('chats', fn ($chats) => $chats->where('chats.id', $this->inviteChatId))
+            ->when($search !== '', fn ($users) => $users->where(function ($query) use ($search): void {
+                $query->where('name', 'like', '%'.$search.'%')
+                    ->orWhere('title', 'like', '%'.$search.'%');
+            }))
+            ->orderBy('name')
+            ->limit(50)
+            ->get(['id', 'name', 'title'])
+            ->toArray();
     }
 
     /**
@@ -717,16 +935,6 @@ new #[Layout('layouts::chat')] #[Title('Чат')] class extends Component
                 return $chatData;
             })
             ->all();
-    }
-
-    /**
-     * Справочник сотрудников (демо-данные).
-     *
-     * @return array<string, array<string, mixed>>
-     */
-    private function demoColleagues(): array
-    {
-        return User::all()->toArray();
     }
 
     /**
@@ -923,6 +1131,7 @@ new #[Layout('layouts::chat')] #[Title('Чат')] class extends Component
         <x-chat.details
             :chat="$this->activeChat"
             :participants="$this->participants"
+            :can-remove-participants="$this->canRemoveParticipants"
             :files="$this->sharedFiles"
             :links="$this->sharedLinks"
         />
@@ -933,6 +1142,28 @@ new #[Layout('layouts::chat')] #[Title('Чат')] class extends Component
         :mode="$newChatMode"
         :selected="$selectedColleagues"
     />
+
+    <x-chat.invite-colleague-modal :colleagues="$this->invitableColleagues" :selected-invitee-id="$selectedInviteeId" :show="$showInviteModal" />
+
+    <flux:modal wire:model="showRemoveParticipantModal" class="md:w-96" data-test="remove-participant-modal">
+        @if ($showRemoveParticipantModal)
+            <div class="space-y-5">
+                <div>
+                    <flux:heading size="lg">{{ __('Удалить участника?') }}</flux:heading>
+                    <flux:subheading>{{ __(':name больше не сможет читать сообщения этой группы.', ['name' => $participantToRemoveName]) }}</flux:subheading>
+                </div>
+
+                <div class="flex justify-end gap-2">
+                    <flux:modal.close>
+                        <flux:button variant="ghost">{{ __('Отмена') }}</flux:button>
+                    </flux:modal.close>
+                    <flux:button variant="danger" wire:click="removeParticipant" data-test="confirm-remove-participant">
+                        {{ __('Удалить') }}
+                    </flux:button>
+                </div>
+            </div>
+        @endif
+    </flux:modal>
 
     <flux:modal wire:model="showMemberModal" class="md:w-80" data-test="mention-profile-modal">
         @if ($showMemberModal && $this->profileMember !== [])

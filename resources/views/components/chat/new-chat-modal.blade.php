@@ -38,11 +38,15 @@
             </button>
         </div>
 
+        @if ($mode === 'group')
+            <flux:input wire:model="groupName" :label="__('Название группы')" :placeholder="__('Например, Команда проекта')" maxlength="100" />
+        @endif
+
         <flux:input
             wire:model.live.debounce.300ms="colleagueSearch"
             size="sm"
             icon="magnifying-glass"
-            :placeholder="__('Имя, должность или отдел')"
+            :placeholder="__('Имя или должность')"
         />
 
         {{-- Коллеги --}}
@@ -51,11 +55,11 @@
                 @if ($mode === 'group')
                     <div
                         class="flex items-center gap-3 rounded-lg px-2 py-2 hover:bg-zinc-800/5 dark:hover:bg-white/5"
-                        wire:key="colleague-{{ $loop->index }}"
+                        wire:key="group-colleague-{{ $colleague['id'] }}"
                     >
                         <flux:checkbox
                             wire:model.live="selectedColleagues"
-                            value="{{ $colleague['name'] }}"
+                            value="{{ $colleague['id'] }}"
                             aria-label="{{ $colleague['name'] }}"
                         />
 
@@ -74,9 +78,14 @@
                         </span>
                     </div>
                 @else
-                    <div
-                        class="flex items-center gap-3 rounded-lg px-2 py-2 hover:bg-zinc-800/5 dark:hover:bg-white/5"
-                        wire:key="colleague-{{ $loop->index }}"
+                    <button
+                        type="button"
+                        wire:click="selectColleague({{ $colleague['id'] }})"
+                        @class([
+                            'flex w-full items-center gap-3 rounded-lg px-2 py-2 text-start hover:bg-zinc-800/5 dark:hover:bg-white/5',
+                            'bg-sky-50 dark:bg-sky-900/30' => in_array($colleague['id'], array_map('intval', $selected), true),
+                        ])
+                        wire:key="direct-colleague-{{ $colleague['id'] }}"
                     >
                         <span class="relative shrink-0">
                             <flux:avatar :name="$colleague['name']" color="auto" size="sm" />
@@ -94,7 +103,7 @@
                         </span>
 
                         <flux:icon.plus class="size-4 shrink-0 text-zinc-400" />
-                    </div>
+                    </button>
                 @endif
             @empty
                 <div class="px-2 py-8 text-center">
@@ -104,6 +113,13 @@
             @endforelse
         </div>
 
+        @error('selectedColleagues')
+            <p class="text-sm text-red-600 dark:text-red-400">{{ $message }}</p>
+        @enderror
+        @if ($errors->has('selectedColleagues.*'))
+            <p class="text-sm text-red-600 dark:text-red-400">{{ $errors->first('selectedColleagues.*') }}</p>
+        @endif
+
         {{-- Действия --}}
         <div class="flex items-center justify-end gap-2">
             <flux:modal.close>
@@ -112,8 +128,8 @@
 
             <flux:button
                 variant="primary"
-                wire:click="$set('showNewChatModal', false)"
-                :disabled="$mode === 'group' && count($selected) === 0"
+                wire:click="createChat"
+                :disabled="count($selected) === 0"
                 data-test="create-chat-button"
             >
                 @if ($mode === 'group')

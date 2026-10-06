@@ -88,8 +88,10 @@
                 <flux:menu.separator />
                 <flux:menu.item icon="document">{{ __('Общие файлы') }}</flux:menu.item>
                 <flux:menu.item icon="link">{{ __('Общие ссылки') }}</flux:menu.item>
-                <flux:menu.separator />
-                <flux:menu.item icon="arrow-right-start-on-rectangle" variant="danger">{{ __('Покинуть чат') }}</flux:menu.item>
+                @if ($chat['type'] === 'group')
+                    <flux:menu.separator />
+                    <flux:menu.item icon="arrow-right-start-on-rectangle" variant="danger" wire:click="leaveChat({{ $chat['id'] }})">{{ __('Покинуть чат') }}</flux:menu.item>
+                @endif
             </flux:menu>
         </flux:dropdown>
     </div>

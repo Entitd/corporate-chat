@@ -1,6 +1,7 @@
 @props([
     'chat' => [],
     'participants' => [],
+    'canRemoveParticipants' => false,
     'files' => [],
     'links' => [],
 ])
@@ -43,7 +44,7 @@
 
                 @if ($chat['type'] === 'group')
                     <flux:tooltip :content="__('Пригласить коллегу')">
-                        <flux:button size="sm" variant="ghost" icon="user-plus" square data-test="invite-colleague-button" />
+                        <flux:button size="sm" variant="ghost" icon="user-plus" square wire:click="openInviteModal({{ $chat['id'] }})" data-test="invite-colleague-button" />
                     </flux:tooltip>
                 @endif
 
@@ -52,8 +53,10 @@
 
                     <flux:menu>
                         <flux:menu.item icon="map-pin">{{ __('Закрепить чат') }}</flux:menu.item>
-                        <flux:menu.separator />
-                        <flux:menu.item icon="arrow-right-start-on-rectangle" variant="danger">{{ __('Покинуть чат') }}</flux:menu.item>
+                        @if ($chat['type'] === 'group')
+                            <flux:menu.separator />
+                            <flux:menu.item icon="arrow-right-start-on-rectangle" variant="danger" wire:click="leaveChat({{ $chat['id'] }})">{{ __('Покинуть чат') }}</flux:menu.item>
+                        @endif
                     </flux:menu>
                 </flux:dropdown>
             </div>
@@ -80,8 +83,22 @@
 
                     <span class="min-w-0 flex-1">
                         <span class="block truncate text-sm text-zinc-900 dark:text-white">{{ $participant['name'] }}</span>
-                        <span class="block truncate text-xs text-zinc-500 dark:text-zinc-400">{{ $participant['position'] }}</span>
+                        <span class="block truncate text-xs text-zinc-500 dark:text-zinc-400">
+                            {{ $participant['role'] === 'admin' ? __('Владелец') : $participant['position'] }}
+                        </span>
                     </span>
+
+                    @if ($canRemoveParticipants && $participant['role'] === 'member' && $participant['id'] !== auth()->id())
+                        <flux:button
+                            size="sm"
+                            variant="ghost"
+                            icon="user-minus"
+                            square
+                            wire:click="confirmRemoveParticipant({{ $participant['id'] }})"
+                            :aria-label="__('Удалить :name из группы', ['name' => $participant['name']])"
+                            data-test="remove-participant-button"
+                        />
+                    @endif
                 </div>
             @endforeach
         </div>
