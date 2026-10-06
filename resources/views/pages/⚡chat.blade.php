@@ -1,5 +1,6 @@
 <?php
 
+use App\Events\MessageCreated;
 use App\Models\Attachment;
 use App\Models\Chat;
 use App\Models\ChatUser;
@@ -209,7 +210,7 @@ new #[Layout('layouts::chat')] #[Title('Чат')] class extends Component
         $storedPaths = [];
 
         try {
-            DB::transaction(function () use ($chat, $body, $mentionIds, $mentionedUsers, &$storedPaths): void {
+            $message = DB::transaction(function () use ($chat, $body, $mentionIds, $mentionedUsers, &$storedPaths): Message {
                 $message = $chat->messages()->create([
                     'user_id' => auth()->id(),
                     'body' => $body === '' ? null : $body,
@@ -246,12 +247,20 @@ new #[Layout('layouts::chat')] #[Title('Чат')] class extends Component
                         Str::limit($body, 120),
                     ));
                 }
+
+                return $message;
             });
         } catch (\Throwable $exception) {
             Storage::disk('local')->delete($storedPaths);
 
             throw $exception;
         }
+
+        MessageCreated::dispatch(
+            $chat->id,
+            $message->id,
+            $chat->users()->pluck('users.id')->all(),
+        );
 
         $this->reset('messageBody', 'pendingFiles', 'selectedMentionIds', 'showMentionPicker', 'mentionSearch');
         $this->showMessageSearch = false;
@@ -261,6 +270,32 @@ new #[Layout('layouts::chat')] #[Title('Чат')] class extends Component
         unset($this->messages, $this->sharedFiles, $this->sharedLinks);
 
         $this->dispatch('message-sent');
+    }
+
+    /** @return array<string, string> */
+    protected function getListeners(): array
+    {
+        return ['echo-private:users.'.auth()->id().',.chat.message.created' => 'refreshFromBroadcast'];
+    }
+
+    /** @param array{chatId?: int, messageId?: int} $event */
+    public function refreshFromBroadcast(array $event): void
+    {
+        $chatId = (int) ($event['chatId'] ?? 0);
+
+        if ($chatId === 0 || ! auth()->user()->chats()->whereKey($chatId)->exists()) {
+            return;
+        }
+
+        unset($this->chats, $this->unreadTotal, $this->mentionNotifications);
+
+        if ($chatId === $this->activeChatId) {
+            unset($this->activeChat, $this->messages, $this->sharedFiles, $this->sharedLinks);
+
+            if (! $this->showMessageSearch) {
+                $this->dispatch('message-sent');
+            }
+        }
     }
 
     public function removePendingFile(int $index): void
