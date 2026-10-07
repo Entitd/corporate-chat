@@ -6,7 +6,7 @@ use App\Models\User;
 use Illuminate\Support\Facades\Event;
 use Livewire\Livewire;
 
-test('a dialog shows only incoming unread messages and opening it persists the read position', function () {
+test('opening a dialog keeps new messages unread until the reader reaches them', function () {
     $recipient = User::factory()->create();
     $sender = User::factory()->create();
     $openChat = Chat::create(['type' => 'direct']);
@@ -28,6 +28,16 @@ test('a dialog shows only incoming unread messages and opening it persists the r
     $this->assertDatabaseHas('chat_users', [
         'chat_id' => $unreadChat->id,
         'user_id' => $recipient->id,
+        'last_read_message_id' => null,
+    ]);
+    expect(collect($component->instance()->chats)->firstWhere('id', $unreadChat->id)['unread'])->toBe(2);
+    $component->assertSee('data-test="unread-messages-button"', false);
+
+    $component->call('markOpenChatAsRead', $lastUnread->id);
+
+    $this->assertDatabaseHas('chat_users', [
+        'chat_id' => $unreadChat->id,
+        'user_id' => $recipient->id,
         'last_read_message_id' => $lastUnread->id,
     ]);
     expect(collect($component->instance()->chats)->firstWhere('id', $unreadChat->id)['unread'])->toBe(0);
@@ -39,7 +49,7 @@ test('a dialog shows only incoming unread messages and opening it persists the r
     expect(collect(Livewire::test('pages::chat')->instance()->chats)->firstWhere('id', $unreadChat->id)['unread'])->toBe(1);
 });
 
-test('a new message increments an unopened dialog while the active dialog stays read', function () {
+test('a new message stays unread in the active dialog until the reader reaches it', function () {
     $recipient = User::factory()->create();
     $sender = User::factory()->create();
     $activeChat = Chat::create(['type' => 'group', 'name' => 'Открытый']);
@@ -55,12 +65,16 @@ test('a new message increments an unopened dialog while the active dialog stays 
         'messageId' => $activeMessage->id,
     ]);
 
-    expect(collect($component->instance()->chats)->firstWhere('id', $activeChat->id)['unread'])->toBe(0);
+    expect(collect($component->instance()->chats)->firstWhere('id', $activeChat->id)['unread'])->toBe(1);
     $this->assertDatabaseHas('chat_users', [
         'chat_id' => $activeChat->id,
         'user_id' => $recipient->id,
-        'last_read_message_id' => $activeMessage->id,
+        'last_read_message_id' => null,
     ]);
+
+    $component->call('markOpenChatAsRead', $activeMessage->id);
+
+    expect(collect($component->instance()->chats)->firstWhere('id', $activeChat->id)['unread'])->toBe(0);
 
     $otherMessage = $unopenedChat->messages()->create(['user_id' => $sender->id, 'body' => 'В другом']);
     $component->dispatch('echo-private:users.'.$recipient->id.',.chat.message.created', [
@@ -69,6 +83,74 @@ test('a new message increments an unopened dialog while the active dialog stays 
     ]);
 
     expect(collect($component->instance()->chats)->firstWhere('id', $unopenedChat->id)['unread'])->toBe(1);
+});
+
+test('opening a long unread dialog includes the last read message', function () {
+    $recipient = User::factory()->create();
+    $sender = User::factory()->create();
+    $chat = Chat::create(['type' => 'direct']);
+    $chat->users()->attach([$recipient->id, $sender->id]);
+    $lastRead = $chat->messages()->create(['user_id' => $sender->id, 'body' => 'Последнее прочитанное']);
+    $chat->users()->updateExistingPivot($recipient->id, ['last_read_message_id' => $lastRead->id]);
+
+    foreach (range(1, 35) as $number) {
+        $chat->messages()->create(['user_id' => $sender->id, 'body' => "Новое {$number}"]);
+    }
+
+    $this->actingAs($recipient);
+
+    $component = Livewire::test('pages::chat')->call('selectChat', $chat->id);
+
+    expect(array_column($component->instance()->messages['data'], 'id'))->toContain($lastRead->id);
+    $component->assertSee('data-last-read-message-id="'.$lastRead->id.'"', false)
+        ->assertSee('data-test="unread-messages-button"', false);
+    $this->assertDatabaseHas('chat_users', [
+        'chat_id' => $chat->id,
+        'user_id' => $recipient->id,
+        'last_read_message_id' => $lastRead->id,
+    ]);
+});
+
+test('reading a displayed message does not mark a later arrival as read', function () {
+    $recipient = User::factory()->create();
+    $sender = User::factory()->create();
+    $chat = Chat::create(['type' => 'direct']);
+    $chat->users()->attach([$recipient->id, $sender->id]);
+    $displayedMessage = $chat->messages()->create(['user_id' => $sender->id, 'body' => 'На экране']);
+    $this->actingAs($recipient);
+    $component = Livewire::test('pages::chat')->call('selectChat', $chat->id);
+    $chat->messages()->create(['user_id' => $sender->id, 'body' => 'Пришло позже']);
+
+    $component->call('markOpenChatAsRead', $displayedMessage->id);
+
+    $this->assertDatabaseHas('chat_users', [
+        'chat_id' => $chat->id,
+        'user_id' => $recipient->id,
+        'last_read_message_id' => $displayedMessage->id,
+    ]);
+    expect(collect($component->instance()->chats)->firstWhere('id', $chat->id)['unread'])->toBe(1);
+});
+
+test('a message from another dialog cannot advance the read position', function () {
+    $recipient = User::factory()->create();
+    $sender = User::factory()->create();
+    $openChat = Chat::create(['type' => 'direct']);
+    $otherChat = Chat::create(['type' => 'direct']);
+    $openChat->users()->attach([$recipient->id, $sender->id]);
+    $otherChat->users()->attach([$recipient->id, $sender->id]);
+    $message = $otherChat->messages()->create(['user_id' => $sender->id, 'body' => 'Другой чат']);
+    $this->actingAs($recipient);
+
+    Livewire::test('pages::chat')
+        ->call('selectChat', $openChat->id)
+        ->call('markOpenChatAsRead', $message->id)
+        ->assertNotFound();
+
+    $this->assertDatabaseHas('chat_users', [
+        'chat_id' => $openChat->id,
+        'user_id' => $recipient->id,
+        'last_read_message_id' => null,
+    ]);
 });
 
 test('marking all dialogs as read clears their counters for later visits', function () {

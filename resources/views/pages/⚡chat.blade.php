@@ -112,6 +112,9 @@ new #[Layout('layouts::chat')] #[Title('Чат')] class extends Component
     #[Locked]
     public ?int $messageReadersMessageId = null;
 
+    #[Locked]
+    public ?int $openedReadMessageId = null;
+
     public function mount(): void
     {
         $requestedChatId = request()->integer('chat');
@@ -124,7 +127,8 @@ new #[Layout('layouts::chat')] #[Title('Чат')] class extends Component
         abort_unless($chat, 403);
 
         $this->activeChatId = $chat->id;
-        $this->markChatAsRead($chat);
+        $this->showChatList = false;
+        $this->prepareChatOpening($chat);
     }
 
     /**
@@ -136,7 +140,6 @@ new #[Layout('layouts::chat')] #[Title('Чат')] class extends Component
         abort_unless($chat, 403);
 
         $this->activeChatId = $chatId;
-        $this->markChatAsRead($chat);
         unset($this->chats, $this->unreadTotal, $this->activeChat);
         $this->showChatList = false;
         $this->showDetails = false;
@@ -152,6 +155,7 @@ new #[Layout('layouts::chat')] #[Title('Чат')] class extends Component
         $this->messageSearch = '';
         $this->messagePage = 1;
         $this->visibleMessageCount = 30;
+        $this->prepareChatOpening($chat);
         $this->reset('messageBody', 'pendingFiles', 'selectedMentionIds', 'showMentionPicker', 'mentionSearch');
     }
 
@@ -314,7 +318,6 @@ new #[Layout('layouts::chat')] #[Title('Чат')] class extends Component
         $chat = auth()->user()->chats()->whereKey($this->activeChatId)->first();
         abort_unless($chat, 403);
 
-        $this->markChatAsRead($chat);
         unset($this->chats, $this->unreadTotal, $this->messages, $this->messageReaders);
     }
 
@@ -330,18 +333,10 @@ new #[Layout('layouts::chat')] #[Title('Чат')] class extends Component
             return;
         }
 
-        if ($chatId === $this->activeChatId) {
-            $this->markChatAsRead($chat);
-        }
-
         unset($this->chats, $this->unreadTotal, $this->mentionNotifications);
 
         if ($chatId === $this->activeChatId) {
             unset($this->activeChat, $this->messages, $this->sharedFiles, $this->sharedLinks);
-
-            if (! $this->showMessageSearch) {
-                $this->dispatch('message-sent');
-            }
         }
 
         if ($message->user_id !== auth()->id()) {
@@ -790,6 +785,34 @@ new #[Layout('layouts::chat')] #[Title('Чат')] class extends Component
         }
 
         unset($this->chats, $this->unreadTotal);
+    }
+
+    public function markOpenChatAsRead(int $messageId): void
+    {
+        $chat = auth()->user()->chats()->whereKey($this->activeChatId)->first();
+        abort_unless($chat, 403);
+        abort_unless($chat->messages()->whereKey($messageId)->exists(), 404);
+
+        $this->markChatAsRead($chat, $messageId);
+        $this->openedReadMessageId = $messageId;
+        unset($this->chats, $this->unreadTotal, $this->activeChat);
+
+        $this->dispatch('chat-read-through');
+    }
+
+    private function prepareChatOpening(Chat $chat): void
+    {
+        $readMessageId = DB::table('chat_users')
+            ->where('chat_id', $chat->id)
+            ->where('user_id', auth()->id())
+            ->value('last_read_message_id');
+
+        $this->openedReadMessageId = $readMessageId === null ? null : (int) $readMessageId;
+
+        if ($this->openedReadMessageId !== null) {
+            $newerMessageCount = $chat->messages()->where('id', '>', $this->openedReadMessageId)->count();
+            $this->visibleMessageCount = max($this->visibleMessageCount, $newerMessageCount + 10);
+        }
     }
 
     private function markChatAsRead(Chat $chat, ?int $latestMessageId = null): void
@@ -1503,6 +1526,8 @@ new #[Layout('layouts::chat')] #[Title('Чат')] class extends Component
             :chat="$this->activeChat"
             :messages="$this->messages"
             :show-message-search="$showMessageSearch"
+            :last-read-message-id="$openedReadMessageId"
+            :has-unread="$this->activeChat['unread'] > 0"
         />
 
         @if ($showMessageSearch && trim($messageSearch) !== '' && $this->messages['total'] > 30)

@@ -41,10 +41,10 @@ test('a recipient sees a new message when its broadcast arrives', function () {
 
     $component->dispatch('echo-private:users.'.$recipient->id.',.chat.message.created', ['chatId' => $chat->id, 'messageId' => $message->id])
         ->assertSee('Сообщение без перезагрузки')
-        ->assertDispatched('message-sent')
+        ->assertNotDispatched('message-sent')
         ->assertDispatched('incoming-chat-message', chatId: $chat->id, author: $sender->name, chat: $sender->name, body: 'Сообщение без перезагрузки');
 
-    Event::assertDispatchedOnce(ChatRead::class);
+    Event::assertNotDispatched(ChatRead::class);
 });
 
 test('a broadcast refreshes the chat list when another chat receives a message', function () {

@@ -2,17 +2,53 @@
     'chat' => [],
     'messages' => [],
     'showMessageSearch' => false,
+    'lastReadMessageId' => null,
+    'hasUnread' => false,
 ])
 
 <div
+    wire:key="chat-thread-{{ $chat['id'] }}"
     class="min-h-0 flex-1 overflow-y-auto bg-[#e9f0eb] px-2 py-4 sm:px-6 lg:bg-zinc-50 dark:bg-[#101b26] dark:lg:bg-zinc-800/60"
-    x-data="{ previousHeight: 0 }"
-    x-init="$nextTick(() => { $el.scrollTop = $el.scrollHeight })"
+    x-data="{
+        previousHeight: 0,
+        userNavigated: false,
+        scrollToOpeningPosition() {
+            if ($el.dataset.hasUnread !== 'true' || $el.dataset.searching === 'true') {
+                $el.scrollTop = $el.scrollHeight;
+                return;
+            }
+
+            const readMessageId = Number($el.dataset.lastReadMessageId);
+            const readMessages = [...$el.querySelectorAll('[data-chat-message-id]')]
+                .filter(message => Number(message.dataset.chatMessageId) <= readMessageId);
+            const lastReadMessage = readMessages.at(-1);
+            $el.scrollTop = lastReadMessage
+                ? Math.max(0, $el.scrollTop + lastReadMessage.getBoundingClientRect().bottom - $el.getBoundingClientRect().bottom + 16)
+                : 0;
+        },
+        markReadAtBottom() {
+            if (!this.userNavigated || $el.dataset.hasUnread !== 'true' || $el.dataset.searching === 'true') return;
+            if ($el.scrollTop + $el.clientHeight < $el.scrollHeight - 24) return;
+
+            this.userNavigated = false;
+            const lastMessage = [...$el.querySelectorAll('[data-chat-message-id]')].at(-1);
+            if (lastMessage) $wire.markOpenChatAsRead(Number(lastMessage.dataset.chatMessageId));
+        },
+    }"
+    x-init="$nextTick(() => scrollToOpeningPosition())"
+    data-last-read-message-id="{{ $lastReadMessageId }}"
+    data-has-unread="{{ $hasUnread ? 'true' : 'false' }}"
+    data-searching="{{ $showMessageSearch ? 'true' : 'false' }}"
+    x-on:wheel="userNavigated = $el.dataset.hasUnread === 'true'"
+    x-on:touchmove.passive="userNavigated = $el.dataset.hasUnread === 'true'; if (document.activeElement?.matches('[data-test=message-input]')) document.activeElement.blur()"
+    x-on:keydown="if (['ArrowDown', 'PageDown', 'End', ' '].includes($event.key)) userNavigated = $el.dataset.hasUnread === 'true'"
+    x-on:scroll.debounce.150ms="markReadAtBottom()"
+    @incoming-chat-message.window="userNavigated = false"
     @message-sent.window="$nextTick(() => { $el.scrollTop = $el.scrollHeight })"
+    @chat-read-through.window="$nextTick(() => { $el.scrollTop = $el.scrollHeight })"
     @message-search-updated.window="$nextTick(() => { $el.scrollTop = 0 })"
     @older-messages-loaded.window="$nextTick(() => { $el.scrollTop += $el.scrollHeight - previousHeight })"
     @focus-chat-message.window="$nextTick(() => document.getElementById('chat-message-' + $event.detail.id)?.scrollIntoView({ block: 'center' }))"
-    x-on:touchmove.passive="if (document.activeElement?.matches('[data-test=message-input]')) document.activeElement.blur()"
     data-test="chat-thread"
 >
     <div class="mx-auto flex max-w-3xl flex-col gap-2.5 lg:gap-4">
@@ -30,6 +66,11 @@
         </div>
 
         @forelse ($messages['data'] as $messageIndex => $message)
+            @if ($hasUnread && ! $showMessageSearch && $message['id'] > ($lastReadMessageId ?? 0) && ($messageIndex === 0 || $messages['data'][$messageIndex - 1]['id'] <= ($lastReadMessageId ?? 0)))
+                <button type="button" wire:click="markOpenChatAsRead({{ $messages['data'][array_key_last($messages['data'])]['id'] }})" class="mx-auto rounded-full bg-sky-100 px-3 py-1.5 text-xs font-medium text-sky-800 dark:bg-sky-900 dark:text-sky-100" data-test="unread-messages-button">
+                    {{ __('Непрочитанные сообщения · Показать новые') }}
+                </button>
+            @endif
         {{-- @dd($message) --}}
                 <div
                     class="flex items-center justify-center py-2"
@@ -45,6 +86,7 @@
 
             <x-chat.message
                 id="chat-message-{{ $message['id'] }}"
+                data-chat-message-id="{{ $message['id'] }}"
                 wire:key="message-{{ $chat['id'] }}-{{ $message['id'] }}"
                 :message="$message"
                 :message-index="$messageIndex"

@@ -149,22 +149,23 @@ test('opening the chat page without a chat parameter leaves conversations unsele
     ]);
 });
 
-test('opening a chat from its link selects it and marks its messages as read', function () {
+test('opening a chat from its link selects it without marking new messages as read', function () {
     $user = User::factory()->create();
     $colleague = User::factory()->create();
     $chat = createChatFor($user, $colleague);
-    $message = $chat->messages()->create(['user_id' => $colleague->id, 'body' => 'Сообщение по ссылке']);
+    $chat->messages()->create(['user_id' => $colleague->id, 'body' => 'Сообщение по ссылке']);
     $this->actingAs($user);
 
     Livewire::withQueryParams(['chat' => $chat->id])
         ->test('pages::chat')
         ->assertSet('activeChatId', $chat->id)
+        ->assertSet('showChatList', false)
         ->assertSee('Сообщение по ссылке');
 
     $this->assertDatabaseHas('chat_users', [
         'chat_id' => $chat->id,
         'user_id' => $user->id,
-        'last_read_message_id' => $message->id,
+        'last_read_message_id' => null,
     ]);
 });
 

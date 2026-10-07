@@ -12,7 +12,7 @@ test('the sender can see which group members have read their message', function 
     $chat->users()->attach([$sender->id, $reader->id, $unreadMember->id]);
     $message = $chat->messages()->create(['user_id' => $sender->id, 'body' => 'План готов']);
     $this->actingAs($reader);
-    Livewire::test('pages::chat')->call('selectChat', $chat->id)->assertSee('План готов');
+    Livewire::test('pages::chat')->call('selectChat', $chat->id)->call('markOpenChatAsRead', $message->id)->assertSee('План готов');
 
     $this->actingAs($sender);
     $component = Livewire::test('pages::chat')
@@ -30,7 +30,7 @@ test('the sender can see which group members have read their message', function 
     ]);
 
     $this->actingAs($unreadMember);
-    Livewire::test('pages::chat')->call('selectChat', $chat->id)->assertSee('План готов');
+    Livewire::test('pages::chat')->call('selectChat', $chat->id)->call('markOpenChatAsRead', $message->id)->assertSee('План готов');
 
     $this->actingAs($sender);
     $component->call('$refresh')->assertSee('Прочитали · 2');
