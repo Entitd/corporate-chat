@@ -129,6 +129,7 @@ test('a group member can invite a colleague from the group details', function ()
     $this->actingAs($user);
 
     $component = Livewire::test('pages::chat')
+        ->call('selectChat', $chat->id)
         ->call('toggleDetails')
         ->call('openInviteModal', $chat->id)
         ->assertSet('showInviteModal', true)
@@ -174,7 +175,7 @@ test('the chat list invitation targets the selected group instead of the open ch
     $this->actingAs($user);
 
     Livewire::test('pages::chat')
-        ->assertSet('activeChatId', $openChat->id)
+        ->call('selectChat', $openChat->id)
         ->call('openInviteModal', $targetChat->id)
         ->set('selectedInviteeId', $invitee->id)
         ->call('inviteColleague')
@@ -220,6 +221,7 @@ test('a group owner can remove a member after confirmation', function () {
     $this->actingAs($owner);
 
     $component = Livewire::test('pages::chat')
+        ->call('selectChat', $chat->id)
         ->call('toggleDetails')
         ->assertSee('data-test="remove-participant-button"', false)
         ->call('confirmRemoveParticipant', $member->id)
@@ -249,6 +251,7 @@ test('regular group members cannot remove participants', function () {
     $this->actingAs($member);
 
     Livewire::test('pages::chat')
+        ->call('selectChat', $chat->id)
         ->call('toggleDetails')
         ->assertDontSee('data-test="remove-participant-button"', false)
         ->call('confirmRemoveParticipant', $owner->id)
@@ -269,9 +272,9 @@ test('the owner cannot remove themselves or another owner', function () {
 
     $this->actingAs($owner);
 
-    Livewire::test('pages::chat')->call('confirmRemoveParticipant', $owner->id)->assertStatus(404);
-    Livewire::test('pages::chat')->call('confirmRemoveParticipant', $otherOwner->id)->assertStatus(404);
-    Livewire::test('pages::chat')->call('confirmRemoveParticipant', $outsider->id)->assertStatus(404);
+    Livewire::test('pages::chat')->call('selectChat', $chat->id)->call('confirmRemoveParticipant', $owner->id)->assertStatus(404);
+    Livewire::test('pages::chat')->call('selectChat', $chat->id)->call('confirmRemoveParticipant', $otherOwner->id)->assertStatus(404);
+    Livewire::test('pages::chat')->call('selectChat', $chat->id)->call('confirmRemoveParticipant', $outsider->id)->assertStatus(404);
 
     $this->assertDatabaseHas('chat_users', ['chat_id' => $chat->id, 'user_id' => $otherOwner->id, 'role' => 'admin']);
 });
@@ -285,7 +288,7 @@ test('removal checks owner rights again when the confirmation is submitted', fun
 
     $this->actingAs($owner);
 
-    $component = Livewire::test('pages::chat')->call('confirmRemoveParticipant', $member->id);
+    $component = Livewire::test('pages::chat')->call('selectChat', $chat->id)->call('confirmRemoveParticipant', $member->id);
     $chat->users()->updateExistingPivot($owner->id, ['role' => 'member']);
 
     $component->call('removeParticipant')->assertStatus(404);

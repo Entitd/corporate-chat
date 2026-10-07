@@ -40,6 +40,7 @@ test('sending uses the current editor text and immediately shows the newest mess
     $this->actingAs($user);
 
     Livewire::test('pages::chat')
+        ->call('selectChat', $chat->id)
         ->assertSee('Старое сообщение 031')
         ->assertDontSee('Старое сообщение 001')
         ->set('messageBody', 'Текст с задержкой')

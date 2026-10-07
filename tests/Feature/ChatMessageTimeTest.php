@@ -17,6 +17,7 @@ test('a message shows its sending time even after it is updated', function () {
     $this->actingAs($recipient);
 
     $component = Livewire::test('pages::chat')
+        ->call('selectChat', $chat->id)
         ->assertSee('Обновлённый текст')
         ->assertSee('>14:35</time>', false)
         ->assertDontSee('>18:42</time>', false)

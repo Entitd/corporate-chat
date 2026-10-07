@@ -115,18 +115,15 @@ new #[Layout('layouts::chat')] #[Title('Чат')] class extends Component
     {
         $requestedChatId = request()->integer('chat');
 
-        if ($requestedChatId > 0) {
-            $chat = auth()->user()->chats()->whereKey($requestedChatId)->first();
-            abort_unless($chat, 403);
-        } else {
-            $chat = auth()->user()->chats()->orderBy('chats.id')->first();
+        if ($requestedChatId <= 0) {
+            return;
         }
 
-        $this->activeChatId = $chat?->id ?? 0;
+        $chat = auth()->user()->chats()->whereKey($requestedChatId)->first();
+        abort_unless($chat, 403);
 
-        if ($chat) {
-            $this->markChatAsRead($chat);
-        }
+        $this->activeChatId = $chat->id;
+        $this->markChatAsRead($chat);
     }
 
     /**

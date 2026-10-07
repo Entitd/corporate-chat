@@ -24,6 +24,7 @@ test('participant can send files without text and download them privately', func
     $this->actingAs($user);
 
     Livewire::test('pages::chat')
+        ->call('selectChat', $chat->id)
         ->set('pendingFiles', [
             UploadedFile::fake()->create('report.pdf', 20, 'application/pdf'),
             UploadedFile::fake()->create('notes.txt', 2, 'text/plain'),
@@ -55,6 +56,7 @@ test('oversized file cannot be sent', function () {
     $this->actingAs($user);
 
     Livewire::test('pages::chat')
+        ->call('selectChat', $chat->id)
         ->set('pendingFiles', [UploadedFile::fake()->create('large.bin', 2049)])
         ->call('sendMessage')
         ->assertHasErrors(['pendingFiles.0' => 'max'])
@@ -70,6 +72,7 @@ test('more than three files cannot be sent', function () {
     $this->actingAs($user);
 
     Livewire::test('pages::chat')
+        ->call('selectChat', $chat->id)
         ->set('pendingFiles', array_map(
             fn (int $number): UploadedFile => UploadedFile::fake()->create("file-{$number}.txt", 1),
             range(1, 4),
@@ -89,6 +92,7 @@ test('mentions can be selected only from members of the active chat', function (
     $this->actingAs($user);
 
     $component = Livewire::test('pages::chat')
+        ->call('selectChat', $chat->id)
         ->set('messageBody', 'Привет, @Бо')
         ->assertSet('showMentionPicker', true);
 
@@ -114,12 +118,14 @@ test('mentions can be selected only from members of the active chat', function (
         ->assertSee('Борис');
 
     Livewire::test('pages::chat')
+        ->call('selectChat', $chat->id)
         ->call('showMentionProfile', $colleague->id)
         ->assertSet('showMemberModal', true)
         ->assertSee('Открыть профиль');
 
-    Livewire::test('pages::chat')->call('mentionColleague', $outsider->id)->assertForbidden();
+    Livewire::test('pages::chat')->call('selectChat', $chat->id)->call('mentionColleague', $outsider->id)->assertForbidden();
     Livewire::test('pages::chat')
+        ->call('selectChat', $chat->id)
         ->set('messageBody', 'Подделка @Чужой')
         ->set('selectedMentionIds', [$outsider->id])
         ->call('sendMessage')
@@ -167,6 +173,7 @@ test('plain at text does not create a mention notification', function () {
     $this->actingAs($user);
 
     Livewire::test('pages::chat')
+        ->call('selectChat', $chat->id)
         ->call('sendMessage', 'Привет, @Борис')
         ->assertDontSee('data-test="message-mention-link"', false);
 
@@ -182,6 +189,7 @@ test('colleagues with the same name get distinct mention links and notifications
     $this->actingAs($sender);
 
     $component = Livewire::test('pages::chat')
+        ->call('selectChat', $chat->id)
         ->call('mentionColleague', $first->id)
         ->call('mentionColleague', $second->id)
         ->call('sendMessage');
@@ -207,6 +215,7 @@ test('one mention token cannot notify two colleagues with the same name', functi
     $this->actingAs($sender);
 
     Livewire::test('pages::chat')
+        ->call('selectChat', $chat->id)
         ->set('selectedMentionIds', [$first->id, $second->id])
         ->call('sendMessage', 'Привет, @Борис');
 

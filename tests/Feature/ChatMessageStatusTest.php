@@ -12,12 +12,13 @@ test('an outgoing direct message changes from sent to read when the recipient op
     $this->actingAs($sender);
 
     $senderChat = Livewire::test('pages::chat')
+        ->call('selectChat', $chat->id)
         ->call('sendMessage', 'Привет')
         ->assertSee('data-message-status="sent"', false)
         ->assertDontSee('data-message-status="read"', false);
 
     $this->actingAs($recipient);
-    Livewire::test('pages::chat')->assertSee('Привет');
+    Livewire::test('pages::chat')->call('selectChat', $chat->id)->assertSee('Привет');
 
     $this->actingAs($sender);
     $senderChat->call('$refresh')
@@ -32,17 +33,17 @@ test('an outgoing group message is read only after every other member opens the 
     $chat = Chat::create(['type' => 'group', 'name' => 'Команда']);
     $chat->users()->attach([$sender->id, $firstRecipient->id, $secondRecipient->id]);
     $this->actingAs($sender);
-    Livewire::test('pages::chat')->call('sendMessage', 'Обновление');
+    Livewire::test('pages::chat')->call('selectChat', $chat->id)->call('sendMessage', 'Обновление');
 
     $this->actingAs($firstRecipient);
-    Livewire::test('pages::chat')->assertSee('Обновление');
+    Livewire::test('pages::chat')->call('selectChat', $chat->id)->assertSee('Обновление');
 
     $this->actingAs($sender);
-    Livewire::test('pages::chat')->assertSee('data-message-status="sent"', false);
+    Livewire::test('pages::chat')->call('selectChat', $chat->id)->assertSee('data-message-status="sent"', false);
 
     $this->actingAs($secondRecipient);
-    Livewire::test('pages::chat')->assertSee('Обновление');
+    Livewire::test('pages::chat')->call('selectChat', $chat->id)->assertSee('Обновление');
 
     $this->actingAs($sender);
-    Livewire::test('pages::chat')->assertSee('data-message-status="read"', false);
+    Livewire::test('pages::chat')->call('selectChat', $chat->id)->assertSee('data-message-status="read"', false);
 });

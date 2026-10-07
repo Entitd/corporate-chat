@@ -25,6 +25,7 @@ test('participant can search messages only in the open chat and close the search
     $this->actingAs($user);
 
     $component = Livewire::test('pages::chat')
+        ->call('selectChat', $chat->id)
         ->call('toggleMessageSearch')
         ->assertSet('showMessageSearch', true)
         ->set('messageSearch', 'ОТЧЁТ');
@@ -41,11 +42,12 @@ test('about chat displays its real participants', function () {
     $user = User::factory()->create(['name' => 'Алиса']);
     $colleague = User::factory()->create(['name' => 'Борис', 'title' => 'Разработчик']);
     $outsider = User::factory()->create(['name' => 'Чужой']);
-    createChatFor($user, $colleague);
+    $chat = createChatFor($user, $colleague);
 
     $this->actingAs($user);
 
     Livewire::test('pages::chat')
+        ->call('selectChat', $chat->id)
         ->call('toggleDetails')
         ->assertSet('showDetails', true)
         ->assertSee('Команда проекта')
@@ -60,7 +62,7 @@ test('about chat displays its real participants', function () {
         ->call('showParticipants')
         ->assertSet('showDetails', true);
 
-    expect(Livewire::test('pages::chat')->instance()->participants)
+    expect(Livewire::test('pages::chat')->call('selectChat', $chat->id)->instance()->participants)
         ->toHaveCount(2)
         ->not->toContain(['name' => 'Чужой']);
 });
@@ -76,6 +78,7 @@ test('search results can be viewed beyond the first page', function () {
     $this->actingAs($user);
 
     $component = Livewire::test('pages::chat')
+        ->call('selectChat', $chat->id)
         ->call('toggleMessageSearch')
         ->set('messageSearch', 'отчёт')
         ->assertSee('Найдено: 31');
@@ -99,6 +102,7 @@ test('about a direct chat shows the colleague name and both members', function (
     $this->actingAs($user);
 
     Livewire::test('pages::chat')
+        ->call('selectChat', $chat->id)
         ->call('toggleDetails')
         ->assertSee('Павел')
         ->assertSee('Мария')
@@ -126,6 +130,44 @@ test('chat page handles an empty chat list', function () {
     $this->get(route('chat.index'))->assertOk()->assertSee('Выберите чат');
 });
 
+test('opening the chat page without a chat parameter leaves conversations unselected and unread', function () {
+    $user = User::factory()->create();
+    $colleague = User::factory()->create();
+    $chat = createChatFor($user, $colleague);
+    $chat->messages()->create(['user_id' => $colleague->id, 'body' => 'Непрочитанное сообщение']);
+    $this->actingAs($user);
+
+    Livewire::test('pages::chat')
+        ->assertSet('activeChatId', 0)
+        ->assertSee('Выберите чат')
+        ->assertDontSee('data-test="chat-thread"', false);
+
+    $this->assertDatabaseHas('chat_users', [
+        'chat_id' => $chat->id,
+        'user_id' => $user->id,
+        'last_read_message_id' => null,
+    ]);
+});
+
+test('opening a chat from its link selects it and marks its messages as read', function () {
+    $user = User::factory()->create();
+    $colleague = User::factory()->create();
+    $chat = createChatFor($user, $colleague);
+    $message = $chat->messages()->create(['user_id' => $colleague->id, 'body' => 'Сообщение по ссылке']);
+    $this->actingAs($user);
+
+    Livewire::withQueryParams(['chat' => $chat->id])
+        ->test('pages::chat')
+        ->assertSet('activeChatId', $chat->id)
+        ->assertSee('Сообщение по ссылке');
+
+    $this->assertDatabaseHas('chat_users', [
+        'chat_id' => $chat->id,
+        'user_id' => $user->id,
+        'last_read_message_id' => $message->id,
+    ]);
+});
+
 test('chat list shows the latest visible message and supports mobile navigation', function () {
     $user = User::factory()->create();
     $colleague = User::factory()->create(['name' => 'Анна']);
@@ -139,7 +181,7 @@ test('chat list shows the latest visible message and supports mobile navigation'
     $this->actingAs($user);
 
     $component = Livewire::test('pages::chat')
-        ->assertSee('Последний ответ')
+        ->assertSee('Выберите чат')
         ->assertDontSee('Удалённое сообщение')
         ->assertSet('showChatList', true);
 
@@ -147,6 +189,7 @@ test('chat list shows the latest visible message and supports mobile navigation'
 
     $component
         ->call('selectChat', $chat->id)
+        ->assertSee('Последний ответ')
         ->assertSet('showChatList', false)
         ->call('backToList')
         ->assertSet('showChatList', true);

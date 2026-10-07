@@ -45,7 +45,7 @@ test('a new message increments an unopened dialog while the active dialog stays 
     $activeChat->users()->attach([$recipient->id, $sender->id]);
     $unopenedChat->users()->attach([$recipient->id, $sender->id]);
     $this->actingAs($recipient);
-    $component = Livewire::test('pages::chat');
+    $component = Livewire::test('pages::chat')->call('selectChat', $activeChat->id);
     $activeMessage = $activeChat->messages()->create(['user_id' => $sender->id, 'body' => 'В открытом']);
 
     $component->dispatch('echo-private:users.'.$recipient->id.',.chat.message.created', [
@@ -81,7 +81,7 @@ test('marking all dialogs as read clears their counters for later visits', funct
     $this->actingAs($recipient);
     $component = Livewire::test('pages::chat');
 
-    expect($component->instance()->unreadTotal)->toBe(1);
+    expect($component->instance()->unreadTotal)->toBe(2);
 
     $component->call('markAllAsRead');
 

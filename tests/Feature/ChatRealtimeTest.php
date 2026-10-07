@@ -15,7 +15,7 @@ test('sending broadcasts a new message only to chat participants', function () {
     $chat->users()->attach([$sender->id, $recipient->id]);
     $this->actingAs($sender);
 
-    Livewire::test('pages::chat')->call('sendMessage', 'Новое сообщение');
+    Livewire::test('pages::chat')->call('selectChat', $chat->id)->call('sendMessage', 'Новое сообщение');
 
     Event::assertDispatched(MessageCreated::class, function (MessageCreated $event) use ($chat, $sender, $recipient, $outsider): bool {
         expect($event->chatId)->toBe($chat->id)
@@ -34,7 +34,7 @@ test('a recipient sees a new message when its broadcast arrives', function () {
     $chat = Chat::create(['type' => 'direct']);
     $chat->users()->attach([$sender->id, $recipient->id]);
     $this->actingAs($recipient);
-    $component = Livewire::test('pages::chat')->assertDontSee('Сообщение без перезагрузки');
+    $component = Livewire::test('pages::chat')->call('selectChat', $chat->id)->assertDontSee('Сообщение без перезагрузки');
     $message = $chat->messages()->create(['user_id' => $sender->id, 'body' => 'Сообщение без перезагрузки']);
 
     $component->dispatch('echo-private:users.'.$recipient->id.',.chat.message.created', ['chatId' => $chat->id, 'messageId' => $message->id])
@@ -51,7 +51,7 @@ test('a broadcast refreshes the chat list when another chat receives a message',
     $openChat->users()->attach($recipient->id);
     $otherChat->users()->attach([$sender->id, $recipient->id]);
     $this->actingAs($recipient);
-    $component = Livewire::test('pages::chat')->assertSet('activeChatId', $openChat->id);
+    $component = Livewire::test('pages::chat')->call('selectChat', $openChat->id);
     $message = $otherChat->messages()->create(['user_id' => $sender->id, 'body' => 'Новость в другой группе']);
 
     $component->dispatch('echo-private:users.'.$recipient->id.',.chat.message.created', ['chatId' => $otherChat->id, 'messageId' => $message->id])

@@ -12,10 +12,11 @@ test('the sender can see which group members have read their message', function 
     $chat->users()->attach([$sender->id, $reader->id, $unreadMember->id]);
     $message = $chat->messages()->create(['user_id' => $sender->id, 'body' => 'План готов']);
     $this->actingAs($reader);
-    Livewire::test('pages::chat')->assertSee('План готов');
+    Livewire::test('pages::chat')->call('selectChat', $chat->id)->assertSee('План готов');
 
     $this->actingAs($sender);
     $component = Livewire::test('pages::chat')
+        ->call('selectChat', $chat->id)
         ->assertSee('data-test="show-message-readers"', false)
         ->call('showMessageReaders', $message->id)
         ->assertSet('showMessageReadersModal', true)
@@ -29,7 +30,7 @@ test('the sender can see which group members have read their message', function 
     ]);
 
     $this->actingAs($unreadMember);
-    Livewire::test('pages::chat')->assertSee('План готов');
+    Livewire::test('pages::chat')->call('selectChat', $chat->id)->assertSee('План готов');
 
     $this->actingAs($sender);
     $component->call('$refresh')->assertSee('Прочитали · 2');
@@ -44,14 +45,14 @@ test('message readers are limited to the sender of a message in the active group
     $message = $group->messages()->create(['user_id' => $sender->id, 'body' => 'Секрет']);
     $this->actingAs($recipient);
 
-    Livewire::test('pages::chat')->call('showMessageReaders', $message->id)->assertForbidden();
+    Livewire::test('pages::chat')->call('selectChat', $group->id)->call('showMessageReaders', $message->id)->assertForbidden();
 
     $direct = Chat::create(['type' => 'direct']);
     $direct->users()->attach([$sender->id, $recipient->id]);
     $directMessage = $direct->messages()->create(['user_id' => $sender->id, 'body' => 'Личное']);
     $this->actingAs($sender);
 
-    Livewire::test('pages::chat')->call('showMessageReaders', $directMessage->id)->assertNotFound();
+    Livewire::test('pages::chat')->call('selectChat', $group->id)->call('showMessageReaders', $directMessage->id)->assertNotFound();
     Livewire::test('pages::chat')
         ->call('selectChat', $direct->id)
         ->call('showMessageReaders', $directMessage->id)
