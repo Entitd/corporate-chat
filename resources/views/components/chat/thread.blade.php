@@ -12,6 +12,7 @@
     @message-search-updated.window="$nextTick(() => { $el.scrollTop = 0 })"
     @older-messages-loaded.window="$nextTick(() => { $el.scrollTop += $el.scrollHeight - previousHeight })"
     @focus-chat-message.window="$nextTick(() => document.getElementById('chat-message-' + $event.detail.id)?.scrollIntoView({ block: 'center' }))"
+    x-on:touchmove.passive="if (document.activeElement?.matches('[data-test=message-input]')) document.activeElement.blur()"
     data-test="chat-thread"
 >
     <div class="mx-auto flex max-w-3xl flex-col gap-2.5 lg:gap-4">

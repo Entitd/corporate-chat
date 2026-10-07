@@ -1225,7 +1225,30 @@ new #[Layout('layouts::chat')] #[Title('Чат')] class extends Component
 
 <div
     class="flex h-dvh w-full overflow-hidden bg-white dark:bg-zinc-800"
+    x-bind:style="chatViewportStyle()"
     x-data="{
+        viewportHeight: window.visualViewport?.height ?? window.innerHeight,
+        viewportOffsetTop: window.visualViewport?.offsetTop ?? 0,
+        viewportChangeHandler: null,
+        init() {
+            this.viewportChangeHandler = () => {
+                this.viewportHeight = window.visualViewport?.height ?? window.innerHeight;
+                this.viewportOffsetTop = window.visualViewport?.offsetTop ?? 0;
+            };
+            window.addEventListener('resize', this.viewportChangeHandler);
+            window.visualViewport?.addEventListener('resize', this.viewportChangeHandler);
+            window.visualViewport?.addEventListener('scroll', this.viewportChangeHandler);
+        },
+        destroy() {
+            window.removeEventListener('resize', this.viewportChangeHandler);
+            window.visualViewport?.removeEventListener('resize', this.viewportChangeHandler);
+            window.visualViewport?.removeEventListener('scroll', this.viewportChangeHandler);
+        },
+        chatViewportStyle() {
+            return window.innerWidth < 1024
+                ? `position: fixed; inset-inline: 0; top: ${this.viewportOffsetTop}px; height: ${this.viewportHeight}px`
+                : '';
+        },
         dragDepth: 0,
         draggingFiles: false,
         dropError: '',
