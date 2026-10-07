@@ -1,5 +1,6 @@
 <?php
 
+use App\Events\ChatRead;
 use App\Events\MessageCreated;
 use App\Models\Attachment;
 use App\Models\Chat;
@@ -286,7 +287,35 @@ new #[Layout('layouts::chat')] #[Title('Чат')] class extends Component
     /** @return array<string, string> */
     protected function getListeners(): array
     {
-        return ['echo-private:users.'.auth()->id().',.chat.message.created' => 'refreshFromBroadcast'];
+        return [
+            'echo-private:users.'.auth()->id().',.chat.message.created' => 'refreshFromBroadcast',
+            'echo-private:users.'.auth()->id().',.chat.read' => 'refreshReadStatus',
+        ];
+    }
+
+    /** @param array{chatId?: int} $event */
+    public function refreshReadStatus(array $event): void
+    {
+        $chatId = (int) ($event['chatId'] ?? 0);
+
+        if ($chatId !== $this->activeChatId || ! auth()->user()->chats()->whereKey($chatId)->exists()) {
+            return;
+        }
+
+        unset($this->messages, $this->messageReaders);
+    }
+
+    public function refreshOpenChat(): void
+    {
+        if ($this->activeChatId <= 0) {
+            return;
+        }
+
+        $chat = auth()->user()->chats()->whereKey($this->activeChatId)->first();
+        abort_unless($chat, 403);
+
+        $this->markChatAsRead($chat);
+        unset($this->chats, $this->unreadTotal, $this->messages, $this->messageReaders);
     }
 
     /** @param array{chatId?: int, messageId?: int} $event */
@@ -757,19 +786,38 @@ new #[Layout('layouts::chat')] #[Title('Чат')] class extends Component
     public function markAllAsRead(): void
     {
         foreach (auth()->user()->chats()->withMax('messages', 'id')->get() as $chat) {
-            auth()->user()->chats()->updateExistingPivot($chat->id, [
-                'last_read_message_id' => $chat->messages_max_id,
-            ]);
+            $this->markChatAsRead($chat, $chat->messages_max_id);
         }
 
         unset($this->chats, $this->unreadTotal);
     }
 
-    private function markChatAsRead(Chat $chat): void
+    private function markChatAsRead(Chat $chat, ?int $latestMessageId = null): void
     {
-        auth()->user()->chats()->updateExistingPivot($chat->id, [
-            'last_read_message_id' => $chat->messages()->max('id'),
-        ]);
+        $latestMessageId ??= $chat->messages()->max('id');
+
+        if ($latestMessageId === null) {
+            return;
+        }
+
+        $updated = DB::table('chat_users')
+            ->where('chat_id', $chat->id)
+            ->where('user_id', auth()->id())
+            ->where(function ($query) use ($latestMessageId): void {
+                $query->whereNull('last_read_message_id')
+                    ->orWhere('last_read_message_id', '<', $latestMessageId);
+            })
+            ->update(['last_read_message_id' => $latestMessageId]);
+
+        if ($updated === 0) {
+            return;
+        }
+
+        $recipientIds = $chat->users()->where('users.id', '!=', auth()->id())->pluck('users.id')->all();
+
+        if ($recipientIds !== []) {
+            ChatRead::dispatch($chat->id, $recipientIds);
+        }
     }
 
     /**
@@ -1430,7 +1478,7 @@ new #[Layout('layouts::chat')] #[Title('Чат')] class extends Component
     @if ($this->activeChat !== [])
     <main
         class="{{ $showChatList ? 'hidden' : 'flex' }} min-w-0 flex-1 flex-col lg:flex"
-        wire:poll.10s
+        wire:poll.10s="refreshOpenChat"
         x-on:touchstart.passive="startChatSwipe($event)"
         x-on:touchend.passive="endChatSwipe($event)"
         x-on:touchcancel.passive="chatSwipeStart = null"

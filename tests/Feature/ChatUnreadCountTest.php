@@ -1,7 +1,9 @@
 <?php
 
+use App\Events\ChatRead;
 use App\Models\Chat;
 use App\Models\User;
+use Illuminate\Support\Facades\Event;
 use Livewire\Livewire;
 
 test('a dialog shows only incoming unread messages and opening it persists the read position', function () {
@@ -83,10 +85,12 @@ test('marking all dialogs as read clears their counters for later visits', funct
 
     expect($component->instance()->unreadTotal)->toBe(2);
 
+    Event::fake([ChatRead::class]);
     $component->call('markAllAsRead');
 
     expect($component->instance()->unreadTotal)->toBe(0);
     expect(Livewire::test('pages::chat')->instance()->unreadTotal)->toBe(0);
+    Event::assertDispatched(ChatRead::class, 2);
 });
 
 test('a newly invited colleague starts with the existing conversation read', function () {

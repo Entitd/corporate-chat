@@ -1,5 +1,6 @@
 <?php
 
+use App\Events\ChatRead;
 use App\Events\MessageCreated;
 use App\Models\Chat;
 use App\Models\User;
@@ -35,12 +36,15 @@ test('a recipient sees a new message when its broadcast arrives', function () {
     $chat->users()->attach([$sender->id, $recipient->id]);
     $this->actingAs($recipient);
     $component = Livewire::test('pages::chat')->call('selectChat', $chat->id)->assertDontSee('Сообщение без перезагрузки');
+    Event::fake([ChatRead::class]);
     $message = $chat->messages()->create(['user_id' => $sender->id, 'body' => 'Сообщение без перезагрузки']);
 
     $component->dispatch('echo-private:users.'.$recipient->id.',.chat.message.created', ['chatId' => $chat->id, 'messageId' => $message->id])
         ->assertSee('Сообщение без перезагрузки')
         ->assertDispatched('message-sent')
         ->assertDispatched('incoming-chat-message', chatId: $chat->id, author: $sender->name, chat: $sender->name, body: 'Сообщение без перезагрузки');
+
+    Event::assertDispatchedOnce(ChatRead::class);
 });
 
 test('a broadcast refreshes the chat list when another chat receives a message', function () {
