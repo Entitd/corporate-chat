@@ -46,6 +46,18 @@
             />
         </flux:tooltip>
 
+        <button
+            type="button"
+            class="inline-flex size-8 items-center justify-center rounded-lg text-zinc-500 hover:bg-zinc-200/70 dark:text-zinc-400 dark:hover:bg-white/10"
+            x-on:click="toggleSound()"
+            x-bind:aria-label="soundEnabled ? @js(__('Выключить звук уведомлений')) : @js(__('Включить звук уведомлений'))"
+            x-bind:title="soundEnabled ? @js(__('Выключить звук уведомлений')) : @js(__('Включить звук уведомлений'))"
+            data-test="toggle-notification-sound"
+        >
+            <flux:icon.speaker-wave x-show="soundEnabled" class="size-5" />
+            <flux:icon.speaker-x-mark x-show="!soundEnabled" x-cloak class="size-5" />
+        </button>
+
         <div wire:poll.15s>
             <flux:dropdown position="bottom" align="end">
                 <span class="relative inline-flex">

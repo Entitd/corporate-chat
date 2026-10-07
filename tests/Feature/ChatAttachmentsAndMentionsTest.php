@@ -145,6 +145,21 @@ test('mentions can be selected only from members of the active chat', function (
     Livewire::test('pages::chat')->call('openMentionNotification', $notification->id)->assertNotFound();
 });
 
+test('closing the mention picker clears its search and preserves the message draft', function () {
+    $user = User::factory()->create();
+    chatWithMembers($user);
+    $this->actingAs($user);
+
+    Livewire::test('pages::chat')
+        ->set('messageBody', 'Привет, @Бор')
+        ->assertSet('showMentionPicker', true)
+        ->assertSet('mentionSearch', 'Бор')
+        ->call('closeMentionPicker')
+        ->assertSet('showMentionPicker', false)
+        ->assertSet('mentionSearch', '')
+        ->assertSet('messageBody', 'Привет, @Бор');
+});
+
 test('plain at text does not create a mention notification', function () {
     $user = User::factory()->create();
     $colleague = User::factory()->create(['name' => 'Борис']);

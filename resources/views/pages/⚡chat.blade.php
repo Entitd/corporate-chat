@@ -283,7 +283,10 @@ new #[Layout('layouts::chat')] #[Title('Чат')] class extends Component
     {
         $chatId = (int) ($event['chatId'] ?? 0);
 
-        if ($chatId === 0 || ! auth()->user()->chats()->whereKey($chatId)->exists()) {
+        $chat = auth()->user()->chats()->whereKey($chatId)->first();
+        $message = $chat?->messages()->with('user')->find((int) ($event['messageId'] ?? 0));
+
+        if (! $message) {
             return;
         }
 
@@ -295,6 +298,15 @@ new #[Layout('layouts::chat')] #[Title('Чат')] class extends Component
             if (! $this->showMessageSearch) {
                 $this->dispatch('message-sent');
             }
+        }
+
+        if ($message->user_id !== auth()->id()) {
+            $this->dispatch('incoming-chat-message',
+                chatId: $chatId,
+                author: $message->user->name,
+                chat: $chat->type === 'group' ? ($chat->name ?: __('Групповой чат')) : $message->user->name,
+                body: Str::limit($message->body ?: __('Вложение'), 120),
+            );
         }
     }
 
@@ -308,6 +320,12 @@ new #[Layout('layouts::chat')] #[Title('Чат')] class extends Component
     {
         abort_unless($this->activeChatId && auth()->user()->chats()->whereKey($this->activeChatId)->exists(), 403);
         $this->showMentionPicker = true;
+        $this->mentionSearch = '';
+    }
+
+    public function closeMentionPicker(): void
+    {
+        $this->showMentionPicker = false;
         $this->mentionSearch = '';
     }
 
@@ -1110,6 +1128,69 @@ new #[Layout('layouts::chat')] #[Title('Чат')] class extends Component
         draggingFiles: false,
         dropError: '',
         dropErrorTimeout: null,
+        soundEnabled: localStorage.getItem('chat-sound-enabled') !== 'false',
+        soundContext: null,
+        incomingNotification: null,
+        notificationTimeout: null,
+        chatSwipeStart: null,
+        startChatSwipe(event) {
+            this.chatSwipeStart = null;
+
+            if (window.innerWidth >= 1024 || $wire.showChatList || event.touches.length !== 1 || event.target.closest('input, textarea, select, [contenteditable]')) return;
+
+            const touch = event.touches[0];
+            this.chatSwipeStart = { identifier: touch.identifier, x: touch.clientX, y: touch.clientY };
+        },
+        endChatSwipe(event) {
+            const start = this.chatSwipeStart;
+            this.chatSwipeStart = null;
+
+            if (!start || window.innerWidth >= 1024 || $wire.showChatList) return;
+
+            const touch = Array.from(event.changedTouches).find(touch => touch.identifier === start.identifier);
+            if (!touch) return;
+
+            const distanceX = touch.clientX - start.x;
+            const distanceY = Math.abs(touch.clientY - start.y);
+
+            if (distanceX >= 90 && distanceX > distanceY * 1.5) $wire.backToList();
+        },
+        unlockSound() {
+            if (!this.soundEnabled || !window.AudioContext) return;
+            this.soundContext ??= new AudioContext();
+            if (this.soundContext.state === 'suspended') this.soundContext.resume().catch(() => {});
+        },
+        toggleSound() {
+            this.soundEnabled = !this.soundEnabled;
+            localStorage.setItem('chat-sound-enabled', String(this.soundEnabled));
+            if (this.soundEnabled) this.unlockSound();
+        },
+        playNotificationSound() {
+            if (!this.soundEnabled) return;
+            this.unlockSound();
+            if (this.soundContext?.state !== 'running') return;
+
+            const start = this.soundContext.currentTime;
+            for (const [frequency, delay] of [[660, 0], [880, 0.13]]) {
+                const oscillator = this.soundContext.createOscillator();
+                const gain = this.soundContext.createGain();
+                oscillator.type = 'sine';
+                oscillator.frequency.value = frequency;
+                gain.gain.setValueAtTime(0.0001, start + delay);
+                gain.gain.exponentialRampToValueAtTime(0.12, start + delay + 0.015);
+                gain.gain.exponentialRampToValueAtTime(0.0001, start + delay + 0.18);
+                oscillator.connect(gain);
+                gain.connect(this.soundContext.destination);
+                oscillator.start(start + delay);
+                oscillator.stop(start + delay + 0.18);
+            }
+        },
+        notifyIncomingMessage(message) {
+            this.incomingNotification = message;
+            clearTimeout(this.notificationTimeout);
+            this.notificationTimeout = setTimeout(() => this.incomingNotification = null, 6000);
+            this.playNotificationSound();
+        },
         hasDraggedFiles(event) {
             return Array.from(event.dataTransfer?.types ?? []).includes('Files');
         },
@@ -1158,7 +1239,23 @@ new #[Layout('layouts::chat')] #[Title('Чат')] class extends Component
     x-on:dragover="if (hasDraggedFiles($event)) { $event.preventDefault(); $event.dataTransfer.dropEffect = 'copy' }"
     x-on:dragleave="if (hasDraggedFiles($event)) { dragDepth = Math.max(0, dragDepth - 1); draggingFiles = dragDepth > 0 }"
     x-on:drop="dropFiles($event)"
+    x-on:pointerdown.once="unlockSound()"
+    x-on:keydown.once="unlockSound()"
+    x-on:incoming-chat-message.window="notifyIncomingMessage($event.detail)"
 >
+    <button
+        x-show="incomingNotification"
+        x-cloak
+        type="button"
+        style="display: none"
+        aria-live="polite"
+        class="fixed inset-x-4 top-4 z-50 mx-auto flex w-auto max-w-sm flex-col gap-1 rounded-xl border border-zinc-200 bg-white px-4 py-3 text-start shadow-xl dark:border-zinc-700 dark:bg-zinc-900"
+        x-on:click="$wire.selectChat(incomingNotification.chatId); incomingNotification = null"
+        data-test="incoming-message-notification"
+    >
+        <span class="text-sm font-semibold text-zinc-900 dark:text-white" x-text="incomingNotification?.chat"></span>
+        <span class="truncate text-xs text-zinc-500 dark:text-zinc-400" x-text="incomingNotification?.author + ': ' + incomingNotification?.body"></span>
+    </button>
     <div
         x-show="draggingFiles"
         x-cloak
@@ -1190,7 +1287,12 @@ new #[Layout('layouts::chat')] #[Title('Чат')] class extends Component
 
     {{-- Переписка --}}
     @if ($this->activeChat !== [])
-    <main class="{{ $showChatList ? 'hidden' : 'flex' }} min-w-0 flex-1 flex-col lg:flex">
+    <main
+        class="{{ $showChatList ? 'hidden' : 'flex' }} min-w-0 flex-1 flex-col lg:flex"
+        x-on:touchstart.passive="startChatSwipe($event)"
+        x-on:touchend.passive="endChatSwipe($event)"
+        x-on:touchcancel.passive="chatSwipeStart = null"
+    >
         <x-chat.header
             :chat="$this->activeChat"
             :participants-count="count($this->participants)"

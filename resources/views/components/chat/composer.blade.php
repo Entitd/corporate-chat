@@ -16,7 +16,11 @@
 >
     <div class="mx-auto max-w-3xl">
         @if ($showMentionPicker)
-            <div class="mb-2 max-h-56 overflow-y-auto rounded-xl border border-zinc-200 bg-white p-2 shadow-lg dark:border-zinc-700 dark:bg-zinc-900" data-test="mention-picker">
+            <div
+                class="mb-2 max-h-56 overflow-y-auto rounded-xl border border-zinc-200 bg-white p-2 shadow-lg dark:border-zinc-700 dark:bg-zinc-900"
+                x-on:click.outside="if (!$event.target.closest('[data-test=mention-button]')) $wire.closeMentionPicker()"
+                data-test="mention-picker"
+            >
                 <flux:input wire:model.live.debounce.200ms="mentionSearch" size="sm" icon="magnifying-glass" :placeholder="__('Найти участника чата')" :aria-label="__('Найти участника чата')" />
                 <div class="mt-2 space-y-1">
                     @forelse ($mentionCandidates as $colleague)

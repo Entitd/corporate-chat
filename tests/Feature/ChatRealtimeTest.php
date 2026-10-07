@@ -39,7 +39,8 @@ test('a recipient sees a new message when its broadcast arrives', function () {
 
     $component->dispatch('echo-private:users.'.$recipient->id.',.chat.message.created', ['chatId' => $chat->id, 'messageId' => $message->id])
         ->assertSee('Сообщение без перезагрузки')
-        ->assertDispatched('message-sent');
+        ->assertDispatched('message-sent')
+        ->assertDispatched('incoming-chat-message', chatId: $chat->id, author: $sender->name, chat: $sender->name, body: 'Сообщение без перезагрузки');
 });
 
 test('a broadcast refreshes the chat list when another chat receives a message', function () {
@@ -56,7 +57,37 @@ test('a broadcast refreshes the chat list when another chat receives a message',
     $component->dispatch('echo-private:users.'.$recipient->id.',.chat.message.created', ['chatId' => $otherChat->id, 'messageId' => $message->id])
         ->assertSet('activeChatId', $openChat->id)
         ->assertSee('Новость в другой группе')
-        ->assertNotDispatched('message-sent');
+        ->assertNotDispatched('message-sent')
+        ->assertDispatched('incoming-chat-message', chatId: $otherChat->id, author: $sender->name, chat: 'Другая группа', body: 'Новость в другой группе');
+});
+
+test('a sender does not receive an incoming message notification for their own message', function () {
+    $sender = User::factory()->create();
+    $chat = Chat::create(['type' => 'group', 'name' => 'Команда']);
+    $chat->users()->attach($sender->id);
+    $this->actingAs($sender);
+    $component = Livewire::test('pages::chat');
+    $message = $chat->messages()->create(['user_id' => $sender->id, 'body' => 'Моё сообщение']);
+
+    $component->dispatch('echo-private:users.'.$sender->id.',.chat.message.created', ['chatId' => $chat->id, 'messageId' => $message->id])
+        ->assertSee('Моё сообщение')
+        ->assertNotDispatched('incoming-chat-message');
+});
+
+test('a broadcast for a message outside the recipient chat does not create a notification', function () {
+    $recipient = User::factory()->create();
+    $sender = User::factory()->create();
+    $chat = Chat::create(['type' => 'group', 'name' => 'Команда']);
+    $chat->users()->attach($recipient->id);
+    $otherChat = Chat::create(['type' => 'group', 'name' => 'Чужой чат']);
+    $otherChat->users()->attach($sender->id);
+    $message = $otherChat->messages()->create(['user_id' => $sender->id, 'body' => 'Секретное сообщение']);
+    $this->actingAs($recipient);
+
+    Livewire::test('pages::chat')
+        ->dispatch('echo-private:users.'.$recipient->id.',.chat.message.created', ['chatId' => $chat->id, 'messageId' => $message->id])
+        ->assertDontSee('Секретное сообщение')
+        ->assertNotDispatched('incoming-chat-message');
 });
 
 test('broadcast channel access is limited to the account owner', function () {
