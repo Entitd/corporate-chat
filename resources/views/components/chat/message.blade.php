@@ -1,6 +1,7 @@
 @props([
     'message' => [],
     'messageIndex' => 0,
+    'isGroupChat' => false,
 ])
 
 @php
@@ -79,15 +80,46 @@
             @endif
 
             {{-- Время и статус --}}
-            <span class="mt-1 flex items-center justify-end gap-1.5 text-[10px] opacity-70">
-                {{ $message['updated_at'] }}
+            <span class="mt-1 flex items-center justify-end gap-1.5 text-[10px]">
+                <time class="opacity-70" datetime="{{ $message['created_at'] }}" x-text="formatChatTime($el.dateTime)">{{ \Illuminate\Support\Carbon::parse($message['created_at'])->format('H:i') }}</time>
 
                 @if ($own)
-                    <span class="flex items-center -space-x-1.5" title="{{ __('Прочитано') }}">
-                        <flux:icon.check class="size-3" />
-                        <flux:icon.check class="size-3" />
-                        <span class="sr-only">{{ __('Прочитано') }}</span>
-                    </span>
+                    @if ($isGroupChat)
+                        <button
+                            type="button"
+                            wire:click="showMessageReaders({{ $message['id'] }})"
+                            @class([
+                                'flex items-center rounded p-1 -m-1 hover:bg-black/5 dark:hover:bg-white/10',
+                                '-space-x-1.5 text-green-600 dark:text-green-400' => $message['status'] === 'read',
+                                'text-zinc-500 dark:text-zinc-400' => $message['status'] === 'sent',
+                            ])
+                            title="{{ $message['status'] === 'read' ? __('Прочитано. Кто прочитал сообщение') : __('Отправлено. Кто прочитал сообщение') }}"
+                            aria-label="{{ $message['status'] === 'read' ? __('Прочитано. Кто прочитал сообщение') : __('Отправлено. Кто прочитал сообщение') }}"
+                            data-message-status="{{ $message['status'] }}"
+                            data-test="show-message-readers"
+                        >
+                            <flux:icon.check class="size-3" />
+                            @if ($message['status'] === 'read')
+                                <flux:icon.check class="size-3" />
+                            @endif
+                        </button>
+                    @else
+                        <span
+                            @class([
+                                'flex items-center',
+                                '-space-x-1.5 text-green-600 dark:text-green-400' => $message['status'] === 'read',
+                                'text-zinc-500 dark:text-zinc-400' => $message['status'] === 'sent',
+                            ])
+                            title="{{ $message['status'] === 'read' ? __('Прочитано') : __('Отправлено') }}"
+                            data-message-status="{{ $message['status'] }}"
+                        >
+                            <flux:icon.check class="size-3" />
+                            @if ($message['status'] === 'read')
+                                <flux:icon.check class="size-3" />
+                            @endif
+                            <span class="sr-only">{{ $message['status'] === 'read' ? __('Прочитано') : __('Отправлено') }}</span>
+                        </span>
+                    @endif
                 @endif
             </span>
         </div>

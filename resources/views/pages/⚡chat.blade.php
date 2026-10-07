@@ -89,9 +89,6 @@ new #[Layout('layouts::chat')] #[Title('Чат')] class extends Component
 
     public string $groupName = '';
 
-    /** Чаты, которые пользователь уже открыл в этой сессии. */
-    public array $readChatIds = [];
-
     /** Текст нового сообщения в редакторе. */
     public string $messageBody = '';
 
@@ -109,15 +106,26 @@ new #[Layout('layouts::chat')] #[Title('Чат')] class extends Component
 
     public ?int $profileMemberId = null;
 
+    public bool $showMessageReadersModal = false;
+
+    #[Locked]
+    public ?int $messageReadersMessageId = null;
+
     public function mount(): void
     {
         $requestedChatId = request()->integer('chat');
 
         if ($requestedChatId > 0) {
-            abort_unless(auth()->user()->chats()->whereKey($requestedChatId)->exists(), 403);
-            $this->activeChatId = $requestedChatId;
+            $chat = auth()->user()->chats()->whereKey($requestedChatId)->first();
+            abort_unless($chat, 403);
         } else {
-            $this->activeChatId = auth()->user()->chats()->orderBy('chats.id')->value('chats.id') ?? 0;
+            $chat = auth()->user()->chats()->orderBy('chats.id')->first();
+        }
+
+        $this->activeChatId = $chat?->id ?? 0;
+
+        if ($chat) {
+            $this->markChatAsRead($chat);
         }
     }
 
@@ -126,10 +134,12 @@ new #[Layout('layouts::chat')] #[Title('Чат')] class extends Component
      */
     public function selectChat(int $chatId): void
     {
-        abort_unless(auth()->user()->chats()->whereKey($chatId)->exists(), 403);
+        $chat = auth()->user()->chats()->whereKey($chatId)->first();
+        abort_unless($chat, 403);
 
         $this->activeChatId = $chatId;
-        $this->readChatIds = array_values(array_unique([...$this->readChatIds, $chatId]));
+        $this->markChatAsRead($chat);
+        unset($this->chats, $this->unreadTotal, $this->activeChat);
         $this->showChatList = false;
         $this->showDetails = false;
         $this->showRemoveParticipantModal = false;
@@ -138,6 +148,8 @@ new #[Layout('layouts::chat')] #[Title('Чат')] class extends Component
         $this->participantToRemoveName = '';
         $this->showMemberModal = false;
         $this->profileMemberId = null;
+        $this->showMessageReadersModal = false;
+        $this->messageReadersMessageId = null;
         $this->showMessageSearch = false;
         $this->messageSearch = '';
         $this->messagePage = 1;
@@ -256,6 +268,8 @@ new #[Layout('layouts::chat')] #[Title('Чат')] class extends Component
             throw $exception;
         }
 
+        $this->markChatAsRead($chat);
+        unset($this->chats, $this->unreadTotal, $this->activeChat);
         MessageCreated::dispatch(
             $chat->id,
             $message->id,
@@ -288,6 +302,10 @@ new #[Layout('layouts::chat')] #[Title('Чат')] class extends Component
 
         if (! $message) {
             return;
+        }
+
+        if ($chatId === $this->activeChatId) {
+            $this->markChatAsRead($chat);
         }
 
         unset($this->chats, $this->unreadTotal, $this->mentionNotifications);
@@ -406,6 +424,52 @@ new #[Layout('layouts::chat')] #[Title('Чат')] class extends Component
         return ['id' => $member->id, 'name' => $member->name, 'title' => $member->title];
     }
 
+    public function showMessageReaders(int $messageId): void
+    {
+        $this->ownGroupMessage($messageId);
+
+        $this->messageReadersMessageId = $messageId;
+        $this->showMessageReadersModal = true;
+    }
+
+    /** @return array{read: array<int, array{id: int, name: string}>, unread: array<int, array{id: int, name: string}>} */
+    #[Computed]
+    public function messageReaders(): array
+    {
+        if (! $this->showMessageReadersModal || $this->messageReadersMessageId === null) {
+            return ['read' => [], 'unread' => []];
+        }
+
+        $message = $this->ownGroupMessage($this->messageReadersMessageId);
+        $participants = $message->chat->users()
+            ->withPivot('last_read_message_id')
+            ->whereKeyNot(auth()->id())
+            ->orderBy('users.name')
+            ->get(['users.id', 'users.name']);
+
+        $readers = ['read' => [], 'unread' => []];
+
+        foreach ($participants as $participant) {
+            $status = $participant->pivot->last_read_message_id !== null
+                && $participant->pivot->last_read_message_id >= $message->id ? 'read' : 'unread';
+
+            $readers[$status][] = ['id' => $participant->id, 'name' => $participant->name];
+        }
+
+        return $readers;
+    }
+
+    private function ownGroupMessage(int $messageId): Message
+    {
+        $chat = auth()->user()->chats()->whereKey($this->activeChatId)->where('type', 'group')->first();
+        abort_unless($chat, 403);
+
+        $message = $chat->messages()->findOrFail($messageId);
+        abort_unless($message->user_id === auth()->id(), 403);
+
+        return $message;
+    }
+
     /** @return array<int, array{id: string, chat_id: int, message_id: int, author_name: string, chat_name: string, excerpt: string, read: bool}> */
     #[Computed]
     public function mentionNotifications(): array
@@ -515,7 +579,9 @@ new #[Layout('layouts::chat')] #[Title('Чат')] class extends Component
             return;
         }
 
-        $chat->users()->syncWithoutDetaching([$inviteeId]);
+        $chat->users()->syncWithoutDetaching([
+            $inviteeId => ['last_read_message_id' => $chat->messages()->max('id')],
+        ]);
 
         $this->showInviteModal = false;
         $this->selectedInviteeId = null;
@@ -693,7 +759,20 @@ new #[Layout('layouts::chat')] #[Title('Чат')] class extends Component
      */
     public function markAllAsRead(): void
     {
-        $this->readChatIds = array_column($this->demoChats(), 'id');
+        foreach (auth()->user()->chats()->withMax('messages', 'id')->get() as $chat) {
+            auth()->user()->chats()->updateExistingPivot($chat->id, [
+                'last_read_message_id' => $chat->messages_max_id,
+            ]);
+        }
+
+        unset($this->chats, $this->unreadTotal);
+    }
+
+    private function markChatAsRead(Chat $chat): void
+    {
+        auth()->user()->chats()->updateExistingPivot($chat->id, [
+            'last_read_message_id' => $chat->messages()->max('id'),
+        ]);
     }
 
     /**
@@ -777,10 +856,22 @@ new #[Layout('layouts::chat')] #[Title('Чат')] class extends Component
 
         // Достаем массив самих сообщений из пагинатора
         $messages = $paginatorData['data'] ?? [];
+        $readPositions = collect();
+
+        if (collect($messages)->contains(fn (array $message): bool => $message['user_id'] === auth()->id())) {
+            $readPositions = DB::table('chat_users')
+                ->where('chat_id', $this->activeChatId)
+                ->where('user_id', '!=', auth()->id())
+                ->pluck('last_read_message_id');
+        }
+
+        $readThroughMessageId = $readPositions->isNotEmpty() && $readPositions->every(fn ($position): bool => $position !== null)
+            ? (int) $readPositions->min()
+            : null;
 
         $previous = null;
 
-        $processedMessages = array_map(function (array $message) use (&$previous): array {
+        $processedMessages = array_map(function (array $message) use (&$previous, $readThroughMessageId): array {
             // 1. Безопасно вытаскиваем день из created_at (если null — ставим текущую дату)
             $currentDay = $message['created_at']
                 ? date('Y-m-d', strtotime($message['created_at']))
@@ -791,6 +882,7 @@ new #[Layout('layouts::chat')] #[Title('Чат')] class extends Component
 
             // Добавляем флаг own в массив сообщения
             $message['own'] = $isOwn;
+            $message['status'] = $isOwn && $readThroughMessageId !== null && $message['id'] <= $readThroughMessageId ? 'read' : 'sent';
             $message['body_segments'] = $this->messageSegments($message);
 
             // 3. Вычисляем день для предыдущего сообщения (для сравнения)
@@ -964,7 +1056,15 @@ new #[Layout('layouts::chat')] #[Title('Чат')] class extends Component
     private function demoChats(): array
     {
         return auth()->user()->chats()
+            ->withPivot('last_read_message_id')
             ->with(['users:id,name', 'latestMessage.user:id,name'])
+            ->withCount(['messages as unread_count' => function ($query): void {
+                $query->where('messages.user_id', '!=', auth()->id())
+                    ->where(function ($unread): void {
+                        $unread->whereNull('chat_users.last_read_message_id')
+                            ->orWhereColumn('messages.id', '>', 'chat_users.last_read_message_id');
+                    });
+            }])
             ->get()
             ->sortByDesc(fn (Chat $chat): int => $chat->latestMessage?->id ?? 0)
             ->map(function (Chat $chat): array {
@@ -977,9 +1077,11 @@ new #[Layout('layouts::chat')] #[Title('Чат')] class extends Component
                 $chatData['name'] = $chat->type === 'direct'
                     ? ($interlocutor?->name ?? __('Пустой чат'))
                     : ($chat->name ?: __('Групповой чат'));
+                $chatData['unread'] = $chat->unread_count;
                 $chatData['last_message'] = $latestMessage ? [
                     'text' => $latestMessage->body ?: __('Вложение'),
                     'author' => $latestMessage->user_id === auth()->id() ? __('Вы') : $latestMessage->user?->name,
+                    'sent_at' => $latestMessage->created_at->toIso8601String(),
                     'time' => $latestMessage->created_at->isToday()
                         ? $latestMessage->created_at->format('H:i')
                         : $latestMessage->created_at->format('d.m'),
@@ -1132,6 +1234,25 @@ new #[Layout('layouts::chat')] #[Title('Чат')] class extends Component
         soundContext: null,
         incomingNotification: null,
         notificationTimeout: null,
+        formatChatTime(instant) {
+            return new Intl.DateTimeFormat('ru-RU', { hour: '2-digit', minute: '2-digit', hourCycle: 'h23' }).format(new Date(instant));
+        },
+        formatChatDate(instant) {
+            return new Intl.DateTimeFormat('ru-RU', { day: '2-digit', month: '2-digit', year: 'numeric' }).format(new Date(instant));
+        },
+        sameLocalDay(first, second) {
+            if (!first || !second) return false;
+            const firstDate = new Date(first);
+            const secondDate = new Date(second);
+            return firstDate.getFullYear() === secondDate.getFullYear()
+                && firstDate.getMonth() === secondDate.getMonth()
+                && firstDate.getDate() === secondDate.getDate();
+        },
+        formatChatListTime(instant) {
+            return this.sameLocalDay(instant, new Date())
+                ? this.formatChatTime(instant)
+                : new Intl.DateTimeFormat('ru-RU', { day: '2-digit', month: '2-digit' }).format(new Date(instant));
+        },
         chatSwipeStart: null,
         startChatSwipe(event) {
             this.chatSwipeStart = null;
@@ -1289,6 +1410,7 @@ new #[Layout('layouts::chat')] #[Title('Чат')] class extends Component
     @if ($this->activeChat !== [])
     <main
         class="{{ $showChatList ? 'hidden' : 'flex' }} min-w-0 flex-1 flex-col lg:flex"
+        wire:poll.10s
         x-on:touchstart.passive="startChatSwipe($event)"
         x-on:touchend.passive="endChatSwipe($event)"
         x-on:touchcancel.passive="chatSwipeStart = null"
@@ -1352,6 +1474,39 @@ new #[Layout('layouts::chat')] #[Title('Чат')] class extends Component
     />
 
     <x-chat.invite-colleague-modal :colleagues="$this->invitableColleagues" :selected-invitee-id="$selectedInviteeId" :show="$showInviteModal" />
+
+    <flux:modal wire:model="showMessageReadersModal" class="md:w-96" data-test="message-readers-modal">
+        @if ($showMessageReadersModal)
+            @php($messageReaders = $this->messageReaders)
+            <div class="space-y-5">
+                <flux:heading size="lg">{{ __('Прочтение сообщения') }}</flux:heading>
+
+                <div class="max-h-72 space-y-5 overflow-y-auto">
+                    <section data-test="message-readers-read">
+                        <h3 class="mb-2 text-xs font-semibold text-green-700 dark:text-green-400">{{ __('Прочитали') }} · {{ count($messageReaders['read']) }}</h3>
+                        @forelse ($messageReaders['read'] as $reader)
+                            <div class="flex items-center gap-2 py-1.5" wire:key="reader-read-{{ $reader['id'] }}">
+                                <flux:avatar :name="$reader['name']" color="auto" size="xs" />
+                                <span class="text-sm text-zinc-900 dark:text-white">{{ $reader['name'] }}</span>
+                            </div>
+                        @empty
+                            <p class="text-sm text-zinc-500 dark:text-zinc-400">{{ __('Пока никто не прочитал') }}</p>
+                        @endforelse
+                    </section>
+
+                    <section data-test="message-readers-unread">
+                        <h3 class="mb-2 text-xs font-semibold text-zinc-500 dark:text-zinc-400">{{ __('Ещё не прочитали') }} · {{ count($messageReaders['unread']) }}</h3>
+                        @foreach ($messageReaders['unread'] as $reader)
+                            <div class="flex items-center gap-2 py-1.5" wire:key="reader-unread-{{ $reader['id'] }}">
+                                <flux:avatar :name="$reader['name']" color="auto" size="xs" />
+                                <span class="text-sm text-zinc-900 dark:text-white">{{ $reader['name'] }}</span>
+                            </div>
+                        @endforeach
+                    </section>
+                </div>
+            </div>
+        @endif
+    </flux:modal>
 
     <flux:modal wire:model="showRemoveParticipantModal" class="md:w-96" data-test="remove-participant-modal">
         @if ($showRemoveParticipantModal)

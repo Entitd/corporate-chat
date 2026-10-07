@@ -67,10 +67,6 @@
                     <flux:button size="sm" variant="ghost" icon="paper-clip" square x-on:click="$refs.chatFileInput.click()" data-test="attach-file-button" />
                 </flux:tooltip>
 
-                <flux:tooltip :content="__('Эмодзи')" class="hidden lg:block">
-                    <flux:button size="sm" variant="ghost" icon="face-smile" square data-test="emoji-button" />
-                </flux:tooltip>
-
                 <flux:tooltip :content="__('Упомянуть коллегу')">
                     <flux:button size="sm" variant="ghost" icon="at-symbol" square wire:click="openMentionPicker" data-test="mention-button" />
                 </flux:tooltip>

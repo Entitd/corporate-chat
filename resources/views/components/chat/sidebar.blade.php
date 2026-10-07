@@ -137,7 +137,7 @@
                         <span class="flex items-center gap-1.5">
                             <span class="min-w-0 flex-1 truncate text-[15px] font-semibold text-zinc-900 lg:text-sm lg:font-medium dark:text-white">{{ $chat['name'] }}</span>
                             @if ($chat['last_message'])
-                                <span class="shrink-0 text-[11px] text-zinc-400 lg:hidden">{{ $chat['last_message']['time'] }}</span>
+                                <time datetime="{{ $chat['last_message']['sent_at'] }}" x-text="formatChatListTime($el.dateTime)" class="shrink-0 text-[11px] text-zinc-400">{{ $chat['last_message']['time'] }}</time>
                             @endif
                         </span>
 
@@ -149,6 +149,9 @@
                                     {{ __('Сообщений пока нет') }}
                                 @endif
                             </span>
+                            @if ($chat['unread'] > 0)
+                                <span class="flex min-w-5 shrink-0 items-center justify-center rounded-full bg-sky-500 px-1.5 text-[11px] font-semibold leading-5 text-white" data-test="chat-unread-count">{{ $chat['unread'] }}</span>
+                            @endif
                         </span>
                     </span>
                 </button>

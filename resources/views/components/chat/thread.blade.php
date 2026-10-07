@@ -30,19 +30,24 @@
 
         @forelse ($messages['data'] as $messageIndex => $message)
         {{-- @dd($message) --}}
-            @if ($message['show_day'])
-                <div class="flex items-center gap-3 py-2" wire:key="day-{{ $chat['id'] }}-{{ $message['id'] }}">
-                    <flux:separator class="flex-1" />
-                    <span class="rounded-full bg-zinc-700/40 px-3 py-1 text-[11px] font-medium text-white lg:hidden dark:bg-white/15">{{ \Illuminate\Support\Carbon::parse($message['created_at'])->format('d.m.Y') }}</span>
-                    <flux:separator class="flex-1" />
+                <div
+                    class="flex items-center justify-center py-2"
+                    wire:key="day-{{ $chat['id'] }}-{{ $message['id'] }}"
+                    data-chat-day
+                    data-current="{{ $message['created_at'] }}"
+                    data-previous="{{ $messages['data'][$messageIndex - 1]['created_at'] ?? '' }}"
+                    x-show="!sameLocalDay($el.dataset.current, $el.dataset.previous)"
+                    @unless ($message['show_day']) style="display: none" @endunless
+                >
+                    <time datetime="{{ $message['created_at'] }}" x-text="formatChatDate($el.dateTime)" class="rounded-full bg-zinc-700/40 px-3 py-1 text-[11px] font-medium text-white dark:bg-white/15">{{ \Illuminate\Support\Carbon::parse($message['created_at'])->format('d.m.Y') }}</time>
                 </div>
-            @endif
 
             <x-chat.message
                 id="chat-message-{{ $message['id'] }}"
                 wire:key="message-{{ $chat['id'] }}-{{ $message['id'] }}"
                 :message="$message"
                 :message-index="$messageIndex"
+                :is-group-chat="$chat['type'] === 'group'"
             />
         @empty
             <p class="py-8 text-center text-sm text-zinc-500 dark:text-zinc-400">
