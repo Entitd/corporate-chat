@@ -139,6 +139,14 @@ new #[Layout('layouts::chat')] #[Title('Чат')] class extends Component
      */
     public function selectChat(int $chatId): void
     {
+        if ($chatId < 0) {
+            $this->selectColleague(-$chatId);
+            $this->newChatMode = 'direct';
+            $this->createChat();
+
+            return;
+        }
+
         $chat = auth()->user()->chats()->whereKey($chatId)->first();
         abort_unless($chat, 403);
 
@@ -878,8 +886,8 @@ new #[Layout('layouts::chat')] #[Title('Чат')] class extends Component
     #[Computed]
     public function directCount(): int
     {
-        return auth()->user()->chats()
-            ->where('type', 'direct')
+        return User::query()
+            ->whereKeyNot(auth()->id())
             ->count();
     }
 
@@ -1134,7 +1142,7 @@ new #[Layout('layouts::chat')] #[Title('Чат')] class extends Component
      */
     private function demoChats(): array
     {
-        return auth()->user()->chats()
+        $chats = auth()->user()->chats()
             ->withPivot('last_read_message_id')
             ->with(['users:id,name', 'latestMessage.user:id,name'])
             ->withCount(['messages as unread_count' => function ($query): void {
@@ -1157,6 +1165,7 @@ new #[Layout('layouts::chat')] #[Title('Чат')] class extends Component
                     ? ($interlocutor?->name ?? __('Пустой чат'))
                     : ($chat->name ?: __('Групповой чат'));
                 $chatData['unread'] = $chat->unread_count;
+                $chatData['interlocutor_id'] = $interlocutor?->id;
                 $chatData['last_message'] = $latestMessage ? [
                     'text' => $latestMessage->body ?: __('Вложение'),
                     'author' => $latestMessage->user_id === auth()->id() ? __('Вы') : $latestMessage->user?->name,
@@ -1168,7 +1177,23 @@ new #[Layout('layouts::chat')] #[Title('Чат')] class extends Component
 
                 return $chatData;
             })
-            ->all();
+            ->values();
+
+        $colleagues = User::query()
+            ->whereKeyNot(auth()->id())
+            ->whereNotIn('id', $chats->pluck('interlocutor_id')->filter()->all())
+            ->orderBy('name')
+            ->get(['id', 'name'])
+            ->map(fn (User $colleague): array => [
+                'id' => -$colleague->id,
+                'type' => 'direct',
+                'name' => $colleague->name,
+                'interlocutor_id' => $colleague->id,
+                'unread' => 0,
+                'last_message' => null,
+            ]);
+
+        return $chats->concat($colleagues)->all();
     }
 
     /**
