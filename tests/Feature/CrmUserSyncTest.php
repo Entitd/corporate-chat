@@ -173,8 +173,9 @@ test('a later synchronization adds employees created in CRM after the initial im
 
 test('initial synchronization excludes inactive and non employee CRM accounts', function () {
     seedCrmUsers([
-        ['id' => 'crm-group', 'user_name' => 'group', 'is_group' => true],
-        ['id' => 'crm-inactive', 'user_name' => 'inactive', 'status' => 'Inactive'],
+        ['id' => 'crm-group', 'user_name' => '', 'is_group' => true],
+        ['id' => 'crm-inactive', 'user_name' => '', 'status' => 'Inactive'],
+        ['id' => '', 'user_name' => '', 'deleted' => true],
         [],
     ]);
 
@@ -201,11 +202,28 @@ test('synchronization disables unavailable CRM users and revokes remembered acce
     expect(Auth::guard()->getProvider()->retrieveById($user->id))->toBeNull();
     expect(Auth::guard()->getProvider()->retrieveByToken($user->id, 'remembered-token'))->toBeNull();
 })->with([
-    'inactive user' => [['status' => 'Inactive']],
-    'deleted user' => [['deleted' => true]],
+    'inactive user' => [['status' => 'Inactive', 'user_name' => '']],
+    'deleted user' => [['deleted' => true, 'user_name' => '']],
     'group user' => [['is_group' => true]],
     'portal user' => [['portal_only' => true]],
     'external authentication user' => [['external_auth_only' => true]],
+]);
+
+test('an active employee with invalid identity cancels the import with a specific explanation', function (array $changes, string $reason) {
+    seedCrmUsers([$changes]);
+    $localUser = User::factory()->create();
+
+    $this->artisan('crm:sync-users')
+        ->expectsOutputToContain('Запись CRM №1: у активного сотрудника '.$reason)
+        ->assertFailed();
+
+    $this->assertDatabaseCount('users', 1);
+    $this->assertDatabaseHas('users', ['id' => $localUser->id, 'crm_active' => true]);
+})->with([
+    'missing ID' => [['id' => ''], 'пустой ID'],
+    'oversized ID' => [['id' => str_repeat('a', 37)], 'пустой ID'],
+    'missing username' => [['user_name' => '   '], 'пустой user_name'],
+    'oversized username' => [['user_name' => str_repeat('a', 256)], 'пустой user_name'],
 ]);
 
 test('users missing from a complete CRM snapshot are disabled without deleting local users', function () {

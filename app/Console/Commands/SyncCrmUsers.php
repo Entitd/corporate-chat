@@ -82,10 +82,6 @@ class SyncCrmUsers extends Command
                 $crmId = (string) $sourceUser->id;
                 $username = Str::lower(trim((string) $sourceUser->user_name));
 
-                if ($crmId === '' || strlen($crmId) > 36 || $username === '' || mb_strlen($username) > 255) {
-                    throw new RuntimeException('В CRM обнаружен пользователь с некорректным ID или логином. Изменения отменены.');
-                }
-
                 $active = (int) $sourceUser->deleted === 0
                     && strcasecmp((string) $sourceUser->status, 'Active') === 0;
 
@@ -93,17 +89,27 @@ class SyncCrmUsers extends Command
                     $active = $active && (int) $sourceUser->{$flag} === 0;
                 }
 
+                if (! $active) {
+                    $this->line("Запись №{$seen} пропущена: отключённый, удалённый или служебный аккаунт.", verbosity: 'v');
+
+                    continue;
+                }
+
+                if ($crmId === '' || strlen($crmId) > 36) {
+                    throw new RuntimeException("Запись CRM №{$seen}: у активного сотрудника пустой ID или ID длиннее 36 символов. Изменения отменены.");
+                }
+
+                if ($username === '' || mb_strlen($username) > 255) {
+                    throw new RuntimeException("Запись CRM №{$seen}: у активного сотрудника пустой user_name или логин длиннее 255 символов. Изменения отменены.");
+                }
+
                 $passwordHash = (string) ($sourceUser->user_hash ?? '');
 
-                if ($active && preg_match('/\A[0-9a-f]{32}\z/i', $passwordHash) !== 1) {
+                if (preg_match('/\A[0-9a-f]{32}\z/i', $passwordHash) !== 1) {
                     throw new RuntimeException('У активного пользователя CRM обнаружен неподдерживаемый хеш пароля. Ожидается MD5 из 32 символов. Изменения отменены.');
                 }
 
                 $user = User::query()->where('crm_id', $crmId)->first() ?? new User;
-
-                if (! $user->exists && ! $active) {
-                    continue;
-                }
 
                 $passwordChanged = $user->exists && $user->crm_password_hash !== $passwordHash;
 
@@ -122,7 +128,7 @@ class SyncCrmUsers extends Command
                     'crm_synced_at' => now(),
                 ]);
 
-                if ($passwordChanged || ! $active) {
+                if ($passwordChanged) {
                     $user->remember_token = null;
                 }
 
