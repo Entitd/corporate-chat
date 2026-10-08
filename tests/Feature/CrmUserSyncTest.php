@@ -4,8 +4,10 @@ use App\Models\Chat;
 use App\Models\User;
 use Illuminate\Database\Connection;
 use Illuminate\Database\Schema\Blueprint;
+use Illuminate\Database\UniqueConstraintViolationException;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Log;
 use Livewire\Livewire;
 
 /** @param array<int, array<string, mixed>> $users */
@@ -239,6 +241,28 @@ test('dry run verifies the import without changing local data', function () {
 
     $this->assertDatabaseCount('users', 1);
     $this->assertDatabaseHas('users', ['id' => $localUser->id, 'crm_id' => null]);
+});
+
+test('database failures explain the constraint and log safe diagnostics without exposing hashes', function () {
+    seedCrmUsers([
+        [],
+        ['id' => 'crm-duplicate', 'user_name' => 'ivan'],
+    ]);
+    Log::spy();
+
+    $this->artisan('crm:sync-users')
+        ->expectsOutputToContain('SQLSTATE: 23000; код: 19. Нарушено ограничение таблицы.')
+        ->doesntExpectOutputToContain(md5('crm-password'))
+        ->assertFailed();
+
+    $this->assertDatabaseCount('users', 0);
+    Log::shouldHaveReceived('error')->once()->with('CRM user synchronization failed.', [
+        'exception_type' => UniqueConstraintViolationException::class,
+        'connection' => config('database.default'),
+        'sqlstate' => '23000',
+        'driver_code' => 19,
+        'reason' => 'Нарушено ограничение таблицы. Проверьте повторяющиеся логины и обязательные поля.',
+    ]);
 });
 
 test('synchronization refuses to use the local database as its CRM source', function () {

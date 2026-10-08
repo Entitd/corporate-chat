@@ -12,6 +12,7 @@ use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Str;
+use PDOException;
 use RuntimeException;
 use Throwable;
 
@@ -145,13 +146,32 @@ class SyncCrmUsers extends Command
                 $local->rollBack($transactionLevel);
             }
 
-            if ($exception instanceof RuntimeException && ! $exception instanceof QueryException) {
+            $context = ['exception_type' => $exception::class];
+
+            if ($exception instanceof PDOException) {
+                $connection = $exception instanceof QueryException ? $exception->getConnectionName() : 'unknown';
+                $sqlState = (string) ($exception->errorInfo[0] ?? $exception->getCode());
+                $driverCode = (int) ($exception->errorInfo[1] ?? 0);
+                $reason = match ($driverCode) {
+                    1045 => 'MySQL отклонил вход: проверьте пользователя, пароль и разрешённый адрес сервера чата.',
+                    1044, 1142, 1143 => 'Недостаточно прав доступа к базе или таблице. Для CRM требуется SELECT на таблицу users.',
+                    1049 => 'Указанная база данных не существует. Проверьте название базы.',
+                    1146 => 'Таблица не существует. Проверьте таблицу users в CRM и миграции базы чата.',
+                    1054 => 'Отсутствует нужный столбец. Проверьте миграции базы чата и структуру таблицы CRM.',
+                    19, 1062 => 'Нарушено ограничение таблицы. Проверьте повторяющиеся логины и обязательные поля.',
+                    2002, 2003, 2005 => 'Не удалось подключиться к MySQL. Проверьте адрес, порт и доступность сервера.',
+                    default => 'Ошибка базы данных. Для диагностики используйте указанные SQLSTATE и код драйвера.',
+                };
+
+                $this->error("Синхронизация не выполнена. Подключение: {$connection}; SQLSTATE: {$sqlState}; код: {$driverCode}. {$reason} Изменения отменены.");
+                $context += ['connection' => $connection, 'sqlstate' => $sqlState, 'driver_code' => $driverCode, 'reason' => $reason];
+            } elseif ($exception instanceof RuntimeException) {
                 $this->error($exception->getMessage());
             } else {
                 $this->error('Синхронизация не выполнена. Проверьте подключение к CRM и ограничения локальной таблицы users. Изменения отменены.');
             }
 
-            Log::error('CRM user synchronization failed.', ['exception_type' => $exception::class]);
+            Log::error('CRM user synchronization failed.', $context);
 
             return self::FAILURE;
         }
