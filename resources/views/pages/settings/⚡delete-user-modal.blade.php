@@ -15,6 +15,8 @@ new class extends Component {
      */
     public function deleteUser(Logout $logout): void
     {
+        abort_if(Auth::user()->crm_id !== null, 403);
+
         $this->validate([
             'password' => $this->currentPasswordRules(),
         ]);

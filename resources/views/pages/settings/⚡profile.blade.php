@@ -21,7 +21,7 @@ new #[Title('Profile settings')] class extends Component {
     public function mount(): void
     {
         $this->name = Auth::user()->name;
-        $this->email = Auth::user()->email;
+        $this->email = Auth::user()->email ?? '';
     }
 
     /**
@@ -52,7 +52,7 @@ new #[Title('Profile settings')] class extends Component {
         $user = Auth::user();
 
         if ($user->hasVerifiedEmail()) {
-            $this->redirectIntended(default: route('dashboard', absolute: false));
+            $this->redirectIntended(default: route('chat.index', absolute: false));
 
             return;
         }
@@ -71,6 +71,10 @@ new #[Title('Profile settings')] class extends Component {
     #[Computed]
     public function showDeleteUser(): bool
     {
+        if (Auth::user()->crm_id !== null) {
+            return false;
+        }
+
         return ! Auth::user() instanceof MustVerifyEmail
             || (Auth::user() instanceof MustVerifyEmail && Auth::user()->hasVerifiedEmail());
     }

@@ -25,7 +25,7 @@
         </div>
 
         <a
-            href="{{ route('dashboard') }}"
+            href="{{ route('chat.index') }}"
             wire:navigate
             class="hidden min-w-0 items-center gap-2 rounded-lg p-1 hover:bg-zinc-800/5 lg:flex dark:hover:bg-white/10"
         >

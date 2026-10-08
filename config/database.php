@@ -32,6 +32,25 @@ return [
 
     'connections' => [
 
+        'crm' => [
+            'driver' => 'mysql',
+            'host' => env('CRM_DB_HOST', '127.0.0.1'),
+            'port' => env('CRM_DB_PORT', '3306'),
+            'database' => env('CRM_DB_DATABASE'),
+            'username' => env('CRM_DB_USERNAME'),
+            'password' => env('CRM_DB_PASSWORD'),
+            'unix_socket' => env('CRM_DB_SOCKET', ''),
+            'charset' => env('CRM_DB_CHARSET', 'utf8mb4'),
+            'collation' => env('CRM_DB_COLLATION', 'utf8mb4_unicode_ci'),
+            'prefix' => env('CRM_DB_PREFIX', ''),
+            'prefix_indexes' => true,
+            'strict' => true,
+            'engine' => null,
+            'options' => extension_loaded('pdo_mysql') ? array_filter([
+                Mysql::ATTR_SSL_CA => env('CRM_MYSQL_ATTR_SSL_CA'),
+            ]) : [],
+        ],
+
         'sqlite' => [
             'driver' => 'sqlite',
             'url' => env('DB_URL'),

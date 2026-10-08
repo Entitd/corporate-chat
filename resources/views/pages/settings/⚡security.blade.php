@@ -68,6 +68,8 @@ new #[Title('Security settings')] class extends Component {
      */
     public function updatePassword(): void
     {
+        abort_if(Auth::user()->crm_id !== null, 403);
+
         try {
             $validated = $this->validate([
                 'current_password' => $this->currentPasswordRules(),
@@ -172,6 +174,9 @@ new #[Title('Security settings')] class extends Component {
     <flux:heading level="2" class="sr-only">{{ __('Security settings') }}</flux:heading>
 
     <x-pages::settings.layout :heading="__('Update password')" :subheading="__('Ensure your account is using a long, random password to stay secure')">
+        @if (auth()->user()->crm_id !== null)
+            <flux:text>{{ __('Пароль этой учётной записи изменяется в CRM.') }}</flux:text>
+        @else
         <form method="POST" wire:submit="updatePassword" class="mt-6 space-y-6">
             <flux:input
                 wire:model="current_password"
@@ -206,6 +211,7 @@ new #[Title('Security settings')] class extends Component {
                 </flux:button>
             </div>
         </form>
+        @endif
 
         @if ($canManageTwoFactor)
             <section class="mt-12">

@@ -6,7 +6,9 @@ use Laravel\Fortify\Features;
 test('login screen can be rendered', function () {
     $response = $this->get(route('login'));
 
-    $response->assertOk();
+    $response->assertOk()
+        ->assertDontSee('href="'.url('/register').'"', false)
+        ->assertDontSee('href="'.url('/forgot-password').'"', false);
 });
 
 test('users can authenticate using the login screen', function () {
@@ -19,9 +21,16 @@ test('users can authenticate using the login screen', function () {
 
     $response
         ->assertSessionHasNoErrors()
-        ->assertRedirect(route('dashboard', absolute: false));
+        ->assertRedirect(route('chat.index', absolute: false));
 
     $this->assertAuthenticated();
+});
+
+test('authenticated users visiting the login screen are redirected to chat', function () {
+    $user = User::factory()->create();
+
+    $this->actingAs($user)->get(route('login'))
+        ->assertRedirect(route('chat.index'));
 });
 
 test('users can not authenticate with invalid password', function () {

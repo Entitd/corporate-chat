@@ -2,15 +2,15 @@
 
 use App\Models\User;
 
-test('guests are redirected to the login page', function () {
-    $response = $this->get(route('dashboard'));
-    $response->assertRedirect(route('login'));
+test('dashboard is unavailable to guests', function () {
+    $response = $this->get('/dashboard');
+    $response->assertNotFound();
 });
 
-test('authenticated users can visit the dashboard', function () {
+test('dashboard is unavailable to authenticated users', function () {
     $user = User::factory()->create();
     $this->actingAs($user);
 
-    $response = $this->get(route('dashboard'));
-    $response->assertOk();
+    $response = $this->get('/dashboard');
+    $response->assertNotFound();
 });
