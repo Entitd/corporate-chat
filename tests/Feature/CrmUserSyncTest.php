@@ -3,6 +3,7 @@
 use App\Models\Chat;
 use App\Models\User;
 use Illuminate\Database\Connection;
+use Illuminate\Database\MySqlConnection;
 use Illuminate\Database\Schema\Blueprint;
 use Illuminate\Database\UniqueConstraintViolationException;
 use Illuminate\Support\Facades\Auth;
@@ -84,6 +85,33 @@ test('synchronization imports CRM users using a read only source connection', fu
     ]);
     $this->assertDatabaseCount('users', 2);
     expect(User::where('crm_id', 'crm-ivan')->firstOrFail()->toArray())->not->toHaveKey('crm_password_hash');
+});
+
+test('legacy MySQL metadata imports prefixed CRM users without requiring modern schema columns', function () {
+    $crm = seedCrmUsers([[]]);
+    $columns = $crm->getSchemaBuilder()->getColumnListing('users');
+    $database = $crm->getDatabaseName();
+    $crm->getSchemaBuilder()->rename('users', 'sugar_users');
+    $pdo = $crm->getPdo();
+    $pdo->exec("ATTACH DATABASE ':memory:' AS information_schema");
+    $pdo->exec('CREATE TABLE information_schema.columns (table_schema TEXT, table_name TEXT, column_name TEXT, ordinal_position INTEGER)');
+    $insert = $pdo->prepare('INSERT INTO information_schema.columns VALUES (?, ?, ?, ?)');
+
+    foreach ($columns as $position => $column) {
+        $insert->execute([$database, 'sugar_users', $column, $position]);
+    }
+
+    $pdo->exec('PRAGMA query_only = ON');
+    DB::purge('crm');
+    config(['database.connections.crm.driver' => 'mysql', 'database.connections.crm.prefix' => 'sugar_']);
+    DB::extend('crm', fn (array $config, string $name): MySqlConnection => new MySqlConnection(
+        $pdo, $database, 'sugar_', array_replace($config, ['name' => $name]),
+    ));
+
+    $this->artisan('crm:sync-users')->assertSuccessful();
+
+    $this->assertDatabaseHas('users', ['crm_id' => 'crm-ivan', 'crm_username' => 'ivan', 'crm_active' => true]);
+    expect(DB::connection('crm')->table('users')->count())->toBe(1);
 });
 
 test('repeated synchronization updates the same user and preserves their conversations', function () {

@@ -44,7 +44,13 @@ class SyncCrmUsers extends Command
             }
 
             $this->info('Подключение к CRM и чтение структуры users...');
-            $columns = $crm->getSchemaBuilder()->getColumnListing('users');
+            $columns = $crm->getDriverName() === 'mysql'
+                ? $crm->query()->fromRaw('information_schema.columns')
+                    ->where('table_schema', $crm->getDatabaseName())
+                    ->where('table_name', $crm->getTablePrefix().'users')
+                    ->orderBy('ordinal_position')
+                    ->pluck('column_name')->all()
+                : $crm->getSchemaBuilder()->getColumnListing('users');
             $requiredColumns = ['id', 'user_name', 'user_hash', 'first_name', 'last_name', 'status', 'deleted'];
 
             if (array_diff($requiredColumns, $columns) !== []) {
