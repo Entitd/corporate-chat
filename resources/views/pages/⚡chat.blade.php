@@ -115,6 +115,9 @@ new #[Layout('layouts::chat')] #[Title('Чат')] class extends Component
     #[Locked]
     public ?int $openedReadMessageId = null;
 
+    #[Locked]
+    public int $unreadDividerCount = 0;
+
     public function mount(): void
     {
         $requestedChatId = request()->integer('chat');
@@ -337,11 +340,16 @@ new #[Layout('layouts::chat')] #[Title('Чат')] class extends Component
 
         if ($chatId === $this->activeChatId) {
             unset($this->activeChat, $this->messages, $this->sharedFiles, $this->sharedLinks);
+
+            if ($message->user_id !== auth()->id()) {
+                $this->unreadDividerCount++;
+            }
         }
 
         if ($message->user_id !== auth()->id()) {
             $this->dispatch('incoming-chat-message',
                 chatId: $chatId,
+                messageId: $message->id,
                 author: $message->user->name,
                 chat: $chat->type === 'group' ? ($chat->name ?: __('Групповой чат')) : $message->user->name,
                 body: Str::limit($message->body ?: __('Вложение'), 120),
@@ -794,7 +802,6 @@ new #[Layout('layouts::chat')] #[Title('Чат')] class extends Component
         abort_unless($chat->messages()->whereKey($messageId)->exists(), 404);
 
         $this->markChatAsRead($chat, $messageId);
-        $this->openedReadMessageId = $messageId;
         unset($this->chats, $this->unreadTotal, $this->activeChat);
 
         $this->dispatch('chat-read-through');
@@ -808,6 +815,10 @@ new #[Layout('layouts::chat')] #[Title('Чат')] class extends Component
             ->value('last_read_message_id');
 
         $this->openedReadMessageId = $readMessageId === null ? null : (int) $readMessageId;
+        $this->unreadDividerCount = $chat->messages()
+            ->where('user_id', '!=', auth()->id())
+            ->where('id', '>', $this->openedReadMessageId ?? 0)
+            ->count();
 
         if ($this->openedReadMessageId !== null) {
             $newerMessageCount = $chat->messages()->where('id', '>', $this->openedReadMessageId)->count();
@@ -1522,13 +1533,28 @@ new #[Layout('layouts::chat')] #[Title('Чат')] class extends Component
             </div>
         @endif
 
-        <x-chat.thread
-            :chat="$this->activeChat"
-            :messages="$this->messages"
-            :show-message-search="$showMessageSearch"
-            :last-read-message-id="$openedReadMessageId"
-            :has-unread="$this->activeChat['unread'] > 0"
-        />
+        <div class="relative flex min-h-0 flex-1 flex-col">
+            <x-chat.thread
+                :chat="$this->activeChat"
+                :messages="$this->messages"
+                :show-message-search="$showMessageSearch"
+                :last-read-message-id="$openedReadMessageId"
+                :has-unread="$this->activeChat['unread'] > 0"
+                :unread-divider-count="$unreadDividerCount"
+            />
+
+            @if (! $showMessageSearch && $this->activeChat['unread'] > 0 && $this->messages['data'] !== [])
+                <button
+                    type="button"
+                    wire:click="markOpenChatAsRead({{ $this->messages['data'][array_key_last($this->messages['data'])]['id'] }})"
+                    class="absolute bottom-3 left-1/2 z-10 flex -translate-x-1/2 items-center gap-2 whitespace-nowrap rounded-full bg-sky-600 px-4 py-2 text-sm font-medium text-white shadow-lg shadow-sky-950/20 transition hover:bg-sky-700 dark:bg-sky-500 dark:text-zinc-950 dark:hover:bg-sky-400"
+                    data-test="unread-messages-button"
+                >
+                    <span>{{ __('Новые сообщения ниже') }}</span>
+                    <flux:icon.arrow-down class="size-4" />
+                </button>
+            @endif
+        </div>
 
         @if ($showMessageSearch && trim($messageSearch) !== '' && $this->messages['total'] > 30)
             <div class="flex items-center justify-center gap-3 border-t border-zinc-200 px-3 py-2 text-xs dark:border-zinc-700" data-test="message-search-pages">

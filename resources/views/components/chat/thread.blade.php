@@ -4,7 +4,10 @@
     'showMessageSearch' => false,
     'lastReadMessageId' => null,
     'hasUnread' => false,
+    'unreadDividerCount' => 0,
 ])
+
+@php($firstUnreadMessage = collect($messages['data'])->first(fn (array $message): bool => ! $message['own'] && $message['id'] > ($lastReadMessageId ?? 0)))
 
 <div
     wire:key="chat-thread-{{ $chat['id'] }}"
@@ -12,6 +15,30 @@
     x-data="{
         previousHeight: 0,
         userNavigated: false,
+        followingNewMessages: false,
+        readingMessageId: null,
+        isAtBottom() {
+            return $el.scrollTop + $el.clientHeight >= $el.scrollHeight - 24;
+        },
+        markMessageRead(messageId) {
+            if (!messageId || this.readingMessageId === messageId) return;
+
+            this.readingMessageId = messageId;
+            $wire.markOpenChatAsRead(messageId).finally(() => {
+                if (this.readingMessageId === messageId) this.readingMessageId = null;
+            });
+        },
+        readVisibleWithoutScrolling() {
+            if ($el.dataset.hasUnread !== 'true' || $el.dataset.searching === 'true') return false;
+            if ($el.scrollHeight > $el.clientHeight + 1 || document.visibilityState !== 'visible' || !$el.getClientRects().length) return false;
+
+            const lastMessage = [...$el.querySelectorAll('[data-chat-message-id]')].at(-1);
+            if (!lastMessage) return false;
+
+            this.followingNewMessages = true;
+            this.markMessageRead(Number(lastMessage.dataset.chatMessageId));
+            return true;
+        },
         scrollToOpeningPosition() {
             if ($el.dataset.hasUnread !== 'true' || $el.dataset.searching === 'true') {
                 $el.scrollTop = $el.scrollHeight;
@@ -26,26 +53,47 @@
                 ? Math.max(0, $el.scrollTop + lastReadMessage.getBoundingClientRect().bottom - $el.getBoundingClientRect().bottom + 16)
                 : 0;
         },
-        markReadAtBottom() {
-            if (!this.userNavigated || $el.dataset.hasUnread !== 'true' || $el.dataset.searching === 'true') return;
-            if ($el.scrollTop + $el.clientHeight < $el.scrollHeight - 24) return;
-
+        handleScroll() {
+            if (!this.userNavigated) return;
             this.userNavigated = false;
+            this.followingNewMessages = this.isAtBottom() && $el.dataset.searching !== 'true';
+            if (!this.followingNewMessages || $el.dataset.hasUnread !== 'true') return;
+
             const lastMessage = [...$el.querySelectorAll('[data-chat-message-id]')].at(-1);
-            if (lastMessage) $wire.markOpenChatAsRead(Number(lastMessage.dataset.chatMessageId));
+            if (lastMessage) this.markMessageRead(Number(lastMessage.dataset.chatMessageId));
+        },
+        handleIncomingMessage(event) {
+            this.userNavigated = false;
+            if (Number(event.detail.chatId) !== Number($el.dataset.chatId)) return;
+            if (this.readVisibleWithoutScrolling()) return;
+            if (!this.followingNewMessages || document.visibilityState !== 'visible' || !$el.getClientRects().length) return;
+
+            this.markMessageRead(Number(event.detail.messageId));
+        },
+        handleVisibilityChange() {
+            if (document.visibilityState !== 'visible') return;
+            if (this.readVisibleWithoutScrolling()) return;
+            if (!this.followingNewMessages || !$el.getClientRects().length) return;
+            if ($el.dataset.hasUnread !== 'true' || $el.dataset.searching === 'true') return;
+
+            const lastMessage = [...$el.querySelectorAll('[data-chat-message-id]')].at(-1);
+            if (lastMessage) this.markMessageRead(Number(lastMessage.dataset.chatMessageId));
         },
     }"
-    x-init="$nextTick(() => scrollToOpeningPosition())"
+    x-init="$nextTick(() => { scrollToOpeningPosition(); followingNewMessages = $el.dataset.hasUnread !== 'true' && $el.dataset.searching !== 'true'; readVisibleWithoutScrolling() })"
+    data-chat-id="{{ $chat['id'] }}"
     data-last-read-message-id="{{ $lastReadMessageId }}"
     data-has-unread="{{ $hasUnread ? 'true' : 'false' }}"
     data-searching="{{ $showMessageSearch ? 'true' : 'false' }}"
-    x-on:wheel="userNavigated = $el.dataset.hasUnread === 'true'"
-    x-on:touchmove.passive="userNavigated = $el.dataset.hasUnread === 'true'; if (document.activeElement?.matches('[data-test=message-input]')) document.activeElement.blur()"
-    x-on:keydown="if (['ArrowDown', 'PageDown', 'End', ' '].includes($event.key)) userNavigated = $el.dataset.hasUnread === 'true'"
-    x-on:scroll.debounce.150ms="markReadAtBottom()"
-    @incoming-chat-message.window="userNavigated = false"
+    x-on:wheel="userNavigated = true"
+    x-on:touchmove.passive="userNavigated = true; if (document.activeElement?.matches('[data-test=message-input]')) document.activeElement.blur()"
+    x-on:keydown="if (['ArrowDown', 'PageDown', 'End', ' '].includes($event.key)) userNavigated = true"
+    x-on:scroll.debounce.150ms="handleScroll()"
+    x-on:resize.window="$nextTick(() => readVisibleWithoutScrolling())"
+    @incoming-chat-message.window="handleIncomingMessage($event)"
+    x-on:visibilitychange.document="handleVisibilityChange()"
     @message-sent.window="$nextTick(() => { $el.scrollTop = $el.scrollHeight })"
-    @chat-read-through.window="$nextTick(() => { $el.scrollTop = $el.scrollHeight })"
+    @chat-read-through.window="$nextTick(() => { $el.scrollTop = $el.scrollHeight; followingNewMessages = true })"
     @message-search-updated.window="$nextTick(() => { $el.scrollTop = 0 })"
     @older-messages-loaded.window="$nextTick(() => { $el.scrollTop += $el.scrollHeight - previousHeight })"
     @focus-chat-message.window="$nextTick(() => document.getElementById('chat-message-' + $event.detail.id)?.scrollIntoView({ block: 'center' }))"
@@ -66,10 +114,12 @@
         </div>
 
         @forelse ($messages['data'] as $messageIndex => $message)
-            @if ($hasUnread && ! $showMessageSearch && $message['id'] > ($lastReadMessageId ?? 0) && ($messageIndex === 0 || $messages['data'][$messageIndex - 1]['id'] <= ($lastReadMessageId ?? 0)))
-                <button type="button" wire:click="markOpenChatAsRead({{ $messages['data'][array_key_last($messages['data'])]['id'] }})" class="mx-auto rounded-full bg-sky-100 px-3 py-1.5 text-xs font-medium text-sky-800 dark:bg-sky-900 dark:text-sky-100" data-test="unread-messages-button">
-                    {{ __('Непрочитанные сообщения · Показать новые') }}
-                </button>
+            @if ($unreadDividerCount > 0 && ! $showMessageSearch && $firstUnreadMessage !== null && $message['id'] === $firstUnreadMessage['id'])
+                <div class="flex items-center gap-3 py-2" data-test="unread-message-divider">
+                    <span class="h-px flex-1 bg-sky-500/60"></span>
+                    <span class="text-xs font-semibold text-sky-700 dark:text-sky-300">{{ $unreadDividerCount === 1 ? __('Новое сообщение') : __('Новые сообщения') }}</span>
+                    <span class="h-px flex-1 bg-sky-500/60"></span>
+                </div>
             @endif
         {{-- @dd($message) --}}
                 <div

@@ -31,7 +31,8 @@ test('opening a dialog keeps new messages unread until the reader reaches them',
         'last_read_message_id' => null,
     ]);
     expect(collect($component->instance()->chats)->firstWhere('id', $unreadChat->id)['unread'])->toBe(2);
-    $component->assertSee('data-test="unread-messages-button"', false);
+    $component->assertSee('data-test="unread-messages-button"', false)
+        ->assertSee('data-test="unread-message-divider"', false);
 
     $component->call('markOpenChatAsRead', $lastUnread->id);
 
@@ -41,12 +42,39 @@ test('opening a dialog keeps new messages unread until the reader reaches them',
         'last_read_message_id' => $lastUnread->id,
     ]);
     expect(collect($component->instance()->chats)->firstWhere('id', $unreadChat->id)['unread'])->toBe(0);
+    $component->assertSee('data-test="unread-message-divider"', false)
+        ->assertSee('>Новые сообщения</span>', false);
+
+    $component->call('refreshOpenChat')->assertSee('data-test="unread-message-divider"', false);
+    $component->call('selectChat', $openChat->id)->assertDontSee('data-test="unread-message-divider"', false);
+    $component->call('selectChat', $unreadChat->id)->assertDontSee('data-test="unread-message-divider"', false);
 
     Livewire::test('pages::chat')->assertDontSee('data-test="chat-unread-count"', false);
 
     $unreadChat->messages()->create(['user_id' => $sender->id, 'body' => 'После прочтения']);
 
     expect(collect(Livewire::test('pages::chat')->instance()->chats)->firstWhere('id', $unreadChat->id)['unread'])->toBe(1);
+});
+
+test('the unread divider appears after the last outgoing message and before the first new incoming message', function () {
+    $recipient = User::factory()->create();
+    $sender = User::factory()->create();
+    $chat = Chat::create(['type' => 'direct']);
+    $chat->users()->attach([$recipient->id, $sender->id]);
+    $lastRead = $chat->messages()->create(['user_id' => $sender->id, 'body' => 'Прочитано']);
+    $chat->users()->updateExistingPivot($recipient->id, ['last_read_message_id' => $lastRead->id]);
+    $outgoing = $chat->messages()->create(['user_id' => $recipient->id, 'body' => 'Мой ответ']);
+    $incoming = $chat->messages()->create(['user_id' => $sender->id, 'body' => 'Новый ответ']);
+    $this->actingAs($recipient);
+
+    $component = Livewire::test('pages::chat')->call('selectChat', $chat->id);
+    $html = $component->html();
+
+    expect(strpos($html, 'data-chat-message-id="'.$outgoing->id.'"'))
+        ->toBeLessThan(strpos($html, 'data-test="unread-message-divider"'));
+    expect(strpos($html, 'data-test="unread-message-divider"'))
+        ->toBeLessThan(strpos($html, 'data-chat-message-id="'.$incoming->id.'"'));
+    $component->assertSee('Новое сообщение');
 });
 
 test('a new message stays unread in the active dialog until the reader reaches it', function () {
@@ -66,6 +94,8 @@ test('a new message stays unread in the active dialog until the reader reaches i
     ]);
 
     expect(collect($component->instance()->chats)->firstWhere('id', $activeChat->id)['unread'])->toBe(1);
+    $component->assertSee('data-test="unread-message-divider"', false)
+        ->assertSee('>Новое сообщение</span>', false);
     $this->assertDatabaseHas('chat_users', [
         'chat_id' => $activeChat->id,
         'user_id' => $recipient->id,
@@ -75,6 +105,8 @@ test('a new message stays unread in the active dialog until the reader reaches i
     $component->call('markOpenChatAsRead', $activeMessage->id);
 
     expect(collect($component->instance()->chats)->firstWhere('id', $activeChat->id)['unread'])->toBe(0);
+    $component->assertSee('data-test="unread-message-divider"', false)
+        ->assertSee('>Новое сообщение</span>', false);
 
     $otherMessage = $unopenedChat->messages()->create(['user_id' => $sender->id, 'body' => 'В другом']);
     $component->dispatch('echo-private:users.'.$recipient->id.',.chat.message.created', [

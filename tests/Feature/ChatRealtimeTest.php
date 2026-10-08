@@ -42,9 +42,18 @@ test('a recipient sees a new message when its broadcast arrives', function () {
     $component->dispatch('echo-private:users.'.$recipient->id.',.chat.message.created', ['chatId' => $chat->id, 'messageId' => $message->id])
         ->assertSee('Сообщение без перезагрузки')
         ->assertNotDispatched('message-sent')
-        ->assertDispatched('incoming-chat-message', chatId: $chat->id, author: $sender->name, chat: $sender->name, body: 'Сообщение без перезагрузки');
+        ->assertDispatched('incoming-chat-message', chatId: $chat->id, messageId: $message->id, author: $sender->name, chat: $sender->name, body: 'Сообщение без перезагрузки');
 
     Event::assertNotDispatched(ChatRead::class);
+
+    $component->call('markOpenChatAsRead', $message->id);
+
+    $this->assertDatabaseHas('chat_users', [
+        'chat_id' => $chat->id,
+        'user_id' => $recipient->id,
+        'last_read_message_id' => $message->id,
+    ]);
+    Event::assertDispatchedOnce(ChatRead::class);
 });
 
 test('a broadcast refreshes the chat list when another chat receives a message', function () {
@@ -62,7 +71,7 @@ test('a broadcast refreshes the chat list when another chat receives a message',
         ->assertSet('activeChatId', $openChat->id)
         ->assertSee('Новость в другой группе')
         ->assertNotDispatched('message-sent')
-        ->assertDispatched('incoming-chat-message', chatId: $otherChat->id, author: $sender->name, chat: 'Другая группа', body: 'Новость в другой группе');
+        ->assertDispatched('incoming-chat-message', chatId: $otherChat->id, messageId: $message->id, author: $sender->name, chat: 'Другая группа', body: 'Новость в другой группе');
 });
 
 test('a sender does not receive an incoming message notification for their own message', function () {
