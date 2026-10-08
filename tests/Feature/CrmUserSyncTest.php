@@ -237,7 +237,13 @@ test('dry run verifies the import without changing local data', function () {
     seedCrmUsers([[]]);
     $localUser = User::factory()->create();
 
-    $this->artisan('crm:sync-users --dry-run')->assertSuccessful();
+    $this->artisan('crm:sync-users --dry-run')
+        ->expectsOutput('Подключение к CRM и чтение структуры users...')
+        ->expectsOutput('Подключение к базе чата и начало транзакции...')
+        ->expectsOutput('Чтение сотрудников из CRM...')
+        ->expectsOutput('Обработано пользователей: 1. Новых: 1.')
+        ->expectsOutput('Проверка завершена: 1 пользователей. Изменения не сохранены.')
+        ->assertSuccessful();
 
     $this->assertDatabaseCount('users', 1);
     $this->assertDatabaseHas('users', ['id' => $localUser->id, 'crm_id' => null]);

@@ -43,6 +43,7 @@ class SyncCrmUsers extends Command
                 throw new RuntimeException('База CRM и локальная база чата должны быть разными.');
             }
 
+            $this->info('Подключение к CRM и чтение структуры users...');
             $columns = $crm->getSchemaBuilder()->getColumnListing('users');
             $requiredColumns = ['id', 'user_name', 'user_hash', 'first_name', 'last_name', 'status', 'deleted'];
 
@@ -59,14 +60,19 @@ class SyncCrmUsers extends Command
                 $sourceUsers->selectRaw($flag.' + 0 as '.$flag);
             }
 
+            $this->info('Подключение к базе чата и начало транзакции...');
             $local->beginTransaction();
+            $this->info('Подготовка локальных пользователей к синхронизации...');
             User::query()->whereNotNull('crm_id')->update(['crm_active' => false]);
             $synchronized = 0;
             $seen = 0;
             $created = 0;
 
+            $this->info('Чтение сотрудников из CRM...');
+
             foreach ($sourceUsers->lazyById(250) as $sourceUser) {
                 $seen++;
+                $this->line("Обработка записи №{$seen}: поиск локального пользователя...", verbosity: 'v');
                 $crmId = (string) $sourceUser->id;
                 $username = Str::lower(trim((string) $sourceUser->user_name));
 
@@ -96,6 +102,7 @@ class SyncCrmUsers extends Command
                 $passwordChanged = $user->exists && $user->crm_password_hash !== $passwordHash;
 
                 if (! $user->exists) {
+                    $this->line("Обработка записи №{$seen}: подготовка новой учётной записи...", verbosity: 'v');
                     $user->password = Hash::make(Str::random(64));
                     $created++;
                 }
@@ -113,6 +120,7 @@ class SyncCrmUsers extends Command
                     $user->remember_token = null;
                 }
 
+                $this->line("Обработка записи №{$seen}: сохранение в базу чата...", verbosity: 'v');
                 $user->save();
 
                 if ($passwordChanged) {
@@ -120,12 +128,17 @@ class SyncCrmUsers extends Command
                 }
 
                 $synchronized++;
+
+                if ($synchronized === 1 || $synchronized % 25 === 0) {
+                    $this->info("Обработано пользователей: {$synchronized}. Новых: {$created}.");
+                }
             }
 
             if ($seen === 0 && User::query()->whereNotNull('crm_id')->exists()) {
                 throw new RuntimeException('Таблица пользователей CRM оказалась пустой. Изменения отменены.');
             }
 
+            $this->info('Обновление доступа отключённых сотрудников...');
             User::query()->whereNotNull('crm_id')->where('crm_active', false)
                 ->chunkById(250, function (Collection $users): void {
                     User::query()->whereIn('id', $users->modelKeys())->update(['remember_token' => null]);
