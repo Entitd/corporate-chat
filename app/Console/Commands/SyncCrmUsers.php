@@ -80,6 +80,7 @@ class SyncCrmUsers extends Command
                 $seen++;
                 $this->line("Обработка записи №{$seen}: поиск локального пользователя...", verbosity: 'v');
                 $crmId = (string) $sourceUser->id;
+                $firstName = (string) $sourceUser->first_name;
                 $username = Str::lower(trim((string) $sourceUser->user_name));
 
                 $active = (int) $sourceUser->deleted === 0
@@ -89,6 +90,12 @@ class SyncCrmUsers extends Command
 
                 foreach ($excludedFlags as $flag) {
                     $active = $active && (int) $sourceUser->{$flag} === 0;
+                }
+
+                if ($firstName == 'ac4print' || $firstName == 'PUL N' || $firstName == 'Администратор') {
+                    $this->line("Запись №{$seen} пропущена: служебный аккаунт.", verbosity: 'v');
+
+                    continue;
                 }
 
                 if (! $active) {
