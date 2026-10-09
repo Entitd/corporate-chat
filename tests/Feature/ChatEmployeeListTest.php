@@ -85,3 +85,39 @@ test('selecting yourself or a missing colleague cannot create a conversation', f
 
     $this->assertDatabaseCount('chats', 0);
 })->with(['self', 'missing']);
+
+test('opening empty conversations preserves the alphabetical colleague order', function () {
+    $user = User::factory()->create();
+    $anna = User::factory()->create(['name' => 'Анна']);
+    $boris = User::factory()->create(['name' => 'Борис']);
+    $vera = User::factory()->create(['name' => 'Вера']);
+    $this->actingAs($user);
+
+    $component = Livewire::test('pages::chat')->call('selectChat', -$vera->id);
+
+    expect(array_column($component->instance()->chats, 'name'))->toBe(['Анна', 'Борис', 'Вера']);
+
+    $component->call('selectChat', -$boris->id)->call('selectChat', -$anna->id);
+
+    expect(array_column($component->instance()->chats, 'name'))->toBe(['Анна', 'Борис', 'Вера']);
+    expect(array_column(Livewire::test('pages::chat')->instance()->chats, 'name'))
+        ->toBe(['Анна', 'Борис', 'Вера']);
+    $this->assertDatabaseCount('messages', 0);
+});
+
+test('conversations move above empty colleagues only after a message and newest messages come first', function () {
+    $user = User::factory()->create();
+    User::factory()->create(['name' => 'Анна']);
+    $boris = User::factory()->create(['name' => 'Борис']);
+    $vera = User::factory()->create(['name' => 'Вера']);
+    $chat = Chat::create(['type' => 'direct']);
+    $chat->users()->attach([$user->id, $boris->id]);
+    $chat->messages()->create(['user_id' => $boris->id, 'body' => 'Первое сообщение']);
+    $this->actingAs($user);
+    $component = Livewire::test('pages::chat')->call('selectChat', -$vera->id);
+    expect(array_column($component->instance()->chats, 'name'))->toBe(['Борис', 'Анна', 'Вера']);
+
+    $component->call('sendMessage', 'Новое сообщение');
+
+    expect(array_column($component->instance()->chats, 'name'))->toBe(['Вера', 'Борис', 'Анна']);
+});

@@ -1193,7 +1193,11 @@ new #[Layout('layouts::chat')] #[Title('Чат')] class extends Component
                 'last_message' => null,
             ]);
 
-        return $chats->concat($colleagues)->all();
+        return $chats->whereNotNull('last_message')
+            ->concat($chats->whereNull('last_message')->concat($colleagues)
+                ->sortBy(fn (array $chat): string => mb_strtolower($chat['name'])))
+            ->values()
+            ->all();
     }
 
     /**
