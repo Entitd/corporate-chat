@@ -1594,6 +1594,32 @@ new #[Layout('layouts::chat')] #[Title('Чат')] class extends Component
 
             this.attachFiles(event.dataTransfer.files);
         },
+        pasteInMessage(event) {
+            if (event.defaultPrevented) return;
+            if (Array.from(document.querySelectorAll('dialog[open], [role=dialog], [role=alertdialog]')).some(dialog => dialog.getClientRects().length > 0)) return;
+
+            const input = this.$el.querySelector('[data-test=message-input]');
+            if (!input || input.disabled || input.readOnly || input.getClientRects().length === 0) return;
+
+            const editable = event.target.closest('input, textarea, select, [contenteditable], [role=textbox]');
+            if (editable && editable !== input) return;
+
+            if (event.clipboardData?.files?.length) {
+                input.focus({ preventScroll: true });
+                this.pasteFiles(event);
+                return;
+            }
+
+            if (editable === input) return;
+
+            const text = event.clipboardData?.getData('text/plain');
+            if (!text) return;
+
+            event.preventDefault();
+            input.focus({ preventScroll: true });
+            input.setRangeText(text, input.value.length, input.value.length, 'end');
+            input.dispatchEvent(new Event('input', { bubbles: true }));
+        },
         pasteFiles(event) {
             const files = event.clipboardData?.files;
             if (!files?.length) return;
@@ -1635,6 +1661,7 @@ new #[Layout('layouts::chat')] #[Title('Чат')] class extends Component
     x-on:pointerdown.once="unlockSound()"
     x-on:keydown.once="unlockSound()"
     x-on:keydown.window="typeInMessage($event)"
+    x-on:paste.window="pasteInMessage($event)"
     x-on:incoming-chat-message.window="notifyIncomingMessage($event.detail)"
 >
     <button

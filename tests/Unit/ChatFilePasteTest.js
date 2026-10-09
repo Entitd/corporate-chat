@@ -20,6 +20,94 @@ function clipboard(files) {
     return { clipboardData: { files }, prevented: false, preventDefault() { this.prevented = true; } };
 }
 
+function messageComposer({ editable = 'none', visible = true, dialog = false, disabled = false, readOnly = false, missing = false } = {}) {
+    const { state, input: fileInput } = composer();
+    const messageInput = {
+        value: 'Черновик: ', disabled, readOnly,
+        getClientRects: () => visible ? [{}] : [],
+        focus() { this.focused = true; },
+        setRangeText(text, start, end) { this.value = this.value.slice(0, start) + text + this.value.slice(end); },
+        dispatchEvent(event) { this.event = event; },
+    };
+    const document = { querySelectorAll: () => [{ getClientRects: () => dialog ? [{}] : [] }] };
+    const handlersWithDocument = new Function('$wire', 'window', 'document', `return ({ ${handlers} });`)(
+        { pendingFiles: [], activeChatId: 1, showChatList: false }, { innerWidth: 1280 }, document,
+    );
+    Object.assign(state, handlersWithDocument);
+    state.$el = { querySelector: selector => selector === '[data-test=message-input]' ? (missing ? null : messageInput) : fileInput };
+    const event = {
+        ...clipboard([]),
+        clipboardData: { files: [], getData: () => 'Вставленный текст\nВторая строка' },
+        target: { closest: () => editable === 'message' ? messageInput : editable === 'other' ? {} : null },
+    };
+
+    return { state, messageInput, fileInput, event };
+}
+
+test('pasting outside the message field appends text and synchronizes the editor', () => {
+    const { state, messageInput, event } = messageComposer();
+
+    state.pasteInMessage(event);
+
+    assert.equal(messageInput.value, 'Черновик: Вставленный текст\nВторая строка');
+    assert.equal(messageInput.focused, true);
+    assert.equal(event.prevented, true);
+    assert.equal(messageInput.event.type, 'input');
+    assert.equal(messageInput.event.bubbles, true);
+});
+
+for (const editable of ['none', 'message']) {
+    test(`pasting files from ${editable} uploads each clipboard batch once`, () => {
+        const { state, messageInput, fileInput, event } = messageComposer({ editable });
+        event.clipboardData.files = [{ name: 'screenshot.png', size: 100 }];
+
+        state.pasteInMessage(event);
+
+        assert.equal(event.prevented, true);
+        assert.equal(messageInput.focused, true);
+        assert.equal(fileInput.files, event.clipboardData.files);
+        assert.equal(fileInput.event.type, 'change');
+        assert.equal(messageInput.value, 'Черновик: ');
+    });
+}
+
+test('text pasted into the focused message field keeps native selection and undo behavior', () => {
+    const { state, messageInput, event } = messageComposer({ editable: 'message' });
+
+    state.pasteInMessage(event);
+
+    assert.equal(event.prevented, false);
+    assert.equal(messageInput.event, undefined);
+});
+
+for (const options of [{ editable: 'other' }, { dialog: true }, { visible: false }, { disabled: true }, { readOnly: true }, { missing: true }]) {
+    test(`pasting text or files is not intercepted when ${JSON.stringify(options)}`, () => {
+        const { state, messageInput, fileInput, event } = messageComposer(options);
+
+        state.pasteInMessage(event);
+        event.clipboardData.files = [{ size: 100 }];
+        state.pasteInMessage(event);
+
+        assert.equal(event.prevented, false);
+        assert.equal(messageInput.focused, undefined);
+        assert.equal(fileInput.files, null);
+    });
+}
+
+test('empty and already handled pastes do not change the editor', () => {
+    const { state, messageInput, event } = messageComposer();
+    event.defaultPrevented = true;
+    state.pasteInMessage(event);
+    event.defaultPrevented = false;
+    event.clipboardData = undefined;
+
+    state.pasteInMessage(event);
+
+    assert.equal(messageInput.value, 'Черновик: ');
+    assert.equal(event.prevented, false);
+    assert.equal(messageInput.focused, undefined);
+});
+
 test('pasted files start the existing upload flow', () => {
     const { state, input } = composer();
     const event = clipboard([{ name: 'screenshot.png', size: 1024 }, { name: 'notes.txt', size: 100 }]);

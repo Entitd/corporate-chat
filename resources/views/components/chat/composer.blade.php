@@ -92,7 +92,6 @@
                 :placeholder="__('Написать сообщение…')"
                 :aria-label="__('Новое сообщение')"
                 data-test="message-input"
-                x-on:paste="pasteFiles($event)"
                 @keydown.enter="if ($event.shiftKey || $event.isComposing) return; $event.preventDefault(); if (sending || uploading) return; sending = true; $wire.sendMessage($event.target.value).finally(() => sending = false)"
             />
 
