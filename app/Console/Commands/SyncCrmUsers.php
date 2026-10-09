@@ -51,7 +51,7 @@ class SyncCrmUsers extends Command
                     ->orderBy('ordinal_position')
                     ->pluck('column_name')->all()
                 : $crm->getSchemaBuilder()->getColumnListing('users');
-            $requiredColumns = ['id', 'user_name', 'user_hash', 'first_name', 'last_name', 'status', 'deleted'];
+            $requiredColumns = ['id', 'user_name', 'user_hash', 'first_name', 'last_name', 'status', 'deleted', 'receive_notifications'];
 
             if (array_diff($requiredColumns, $columns) !== []) {
                 throw new RuntimeException('В таблице users CRM отсутствуют обязательные поля SugarCRM.');
@@ -59,7 +59,7 @@ class SyncCrmUsers extends Command
 
             $excludedFlags = array_values(array_intersect(['is_group', 'portal_only', 'external_auth_only'], $columns));
             $sourceUsers = $crm->table('users')
-                ->select(['id', 'user_name', 'user_hash', 'first_name', 'last_name', 'status'])
+                ->select(['id', 'user_name', 'user_hash', 'first_name', 'last_name', 'status', 'receive_notifications'])
                 ->selectRaw('deleted + 0 as deleted');
 
             foreach ($excludedFlags as $flag) {
@@ -85,12 +85,20 @@ class SyncCrmUsers extends Command
                 $active = (int) $sourceUser->deleted === 0
                     && strcasecmp((string) $sourceUser->status, 'Active') === 0;
 
+                $receiveNotifications = (bool) $sourceUser->receive_notifications;
+
                 foreach ($excludedFlags as $flag) {
                     $active = $active && (int) $sourceUser->{$flag} === 0;
                 }
 
                 if (! $active) {
                     $this->line("Запись №{$seen} пропущена: отключённый, удалённый или служебный аккаунт.", verbosity: 'v');
+
+                    continue;
+                }
+                
+                if (! $receiveNotifications) {
+                    $this->line("Запись №{$seen} пропущена: на аккаунте отключечны уведомления.", verbosity: 'v');
 
                     continue;
                 }
