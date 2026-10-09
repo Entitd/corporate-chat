@@ -34,7 +34,8 @@ test('opening a dialog keeps new messages unread until the reader reaches them',
     $component->assertSee('data-test="unread-messages-button"', false)
         ->assertSee('data-test="unread-message-divider"', false);
 
-    $component->call('markOpenChatAsRead', $lastUnread->id);
+    $component->call('markOpenChatAsRead', $lastUnread->id)
+        ->assertDispatched('chat-read-through');
 
     $this->assertDatabaseHas('chat_users', [
         'chat_id' => $unreadChat->id,

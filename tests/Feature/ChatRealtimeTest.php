@@ -46,7 +46,8 @@ test('a recipient sees a new message when its broadcast arrives', function () {
 
     Event::assertNotDispatched(ChatRead::class);
 
-    $component->call('markOpenChatAsRead', $message->id);
+    $component->call('markOpenChatAsRead', $message->id, false)
+        ->assertNotDispatched('chat-read-through');
 
     $this->assertDatabaseHas('chat_users', [
         'chat_id' => $chat->id,

@@ -31,6 +31,18 @@ class Message extends Model
         return $this->belongsTo(Chat::class);
     }
 
+    /** @return BelongsTo<Message, $this> */
+    public function parent(): BelongsTo
+    {
+        return $this->belongsTo(self::class, 'parent_id');
+    }
+
+    /** @return BelongsTo<Message, $this> */
+    public function forwardedMessage(): BelongsTo
+    {
+        return $this->belongsTo(self::class, 'forwarded_message_id');
+    }
+
     /** @return HasMany<Attachment, $this> */
     public function attachments(): HasMany
     {

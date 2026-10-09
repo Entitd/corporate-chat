@@ -93,6 +93,16 @@ new #[Layout('layouts::chat')] #[Title('Чат')] class extends Component
     /** Текст нового сообщения в редакторе. */
     public string $messageBody = '';
 
+    #[Locked]
+    public ?int $replyToMessageId = null;
+
+    #[Locked]
+    public ?int $forwardMessageId = null;
+
+    public bool $showForwardModal = false;
+
+    public string $forwardSearch = '';
+
     /** @var array<int, \Livewire\Features\SupportFileUploads\TemporaryUploadedFile> */
     public array $pendingFiles = [];
 
@@ -167,6 +177,7 @@ new #[Layout('layouts::chat')] #[Title('Чат')] class extends Component
         $this->messagePage = 1;
         $this->visibleMessageCount = 30;
         $this->prepareChatOpening($chat);
+        $this->reset('replyToMessageId', 'forwardMessageId', 'showForwardModal', 'forwardSearch');
         $this->reset('messageBody', 'pendingFiles', 'selectedMentionIds', 'showMentionPicker', 'mentionSearch');
     }
 
@@ -176,6 +187,100 @@ new #[Layout('layouts::chat')] #[Title('Чат')] class extends Component
     public function backToList(): void
     {
         $this->showChatList = true;
+    }
+
+    private function activeChatMessage(int $messageId): Message
+    {
+        $chat = auth()->user()->chats()->whereKey($this->activeChatId)->first();
+        abort_unless($chat, 403);
+
+        return $chat->messages()->with(['user:id,name', 'attachments'])->findOrFail($messageId);
+    }
+
+    public function replyToMessage(int $messageId): void
+    {
+        $this->activeChatMessage($messageId);
+        $this->replyToMessageId = $messageId;
+        unset($this->replyPreview);
+        $this->dispatch('message-reply-selected');
+    }
+
+    public function cancelReply(): void
+    {
+        $this->replyToMessageId = null;
+        unset($this->replyPreview);
+    }
+
+    /** @return array{author: string, body: string}|null */
+    #[Computed]
+    public function replyPreview(): ?array
+    {
+        if ($this->replyToMessageId === null) {
+            return null;
+        }
+
+        $message = $this->activeChatMessage($this->replyToMessageId);
+
+        return ['author' => $message->user?->name ?? __('Пользователь'), 'body' => $message->body ?: __('Вложение')];
+    }
+
+    public function openForwardMessage(int $messageId): void
+    {
+        $this->activeChatMessage($messageId);
+        $this->forwardMessageId = $messageId;
+        $this->forwardSearch = '';
+        $this->showForwardModal = true;
+    }
+
+    /** @return array<int, array{id: int, title: string}> */
+    #[Computed]
+    public function forwardChats(): array
+    {
+        return auth()->user()->chats()->with('users:id,name')->get()
+            ->map(fn (Chat $chat): array => [
+                'id' => $chat->id,
+                'title' => $chat->type === 'group'
+                    ? ($chat->name ?: __('Групповой чат'))
+                    : ($chat->users->firstWhere('id', '!=', auth()->id())?->name ?? __('Личный чат')),
+            ])
+            ->filter(fn (array $chat): bool => mb_stripos($chat['title'], trim($this->forwardSearch)) !== false)
+            ->values()->all();
+    }
+
+    public function forwardMessage(int $chatId): void
+    {
+        abort_unless($this->forwardMessageId !== null && $this->showForwardModal, 404);
+        $source = $this->activeChatMessage($this->forwardMessageId);
+        $target = auth()->user()->chats()->whereKey($chatId)->first();
+        abort_unless($target, 403);
+
+        $message = DB::transaction(function () use ($source, $target): Message {
+            $message = $target->messages()->create([
+                'user_id' => auth()->id(),
+                'body' => $source->body,
+                'forwarded_message_id' => $source->forwarded_message_id ?? $source->id,
+            ]);
+
+            foreach ($source->attachments as $attachment) {
+                $message->attachments()->create($attachment->only(['file_path', 'file_name', 'file_type', 'file_size', 'duration']));
+            }
+
+            return $message;
+        });
+
+        $this->reset('forwardMessageId', 'showForwardModal', 'forwardSearch');
+        unset($this->chats, $this->unreadTotal, $this->activeChat, $this->messages, $this->sharedFiles, $this->sharedLinks);
+        MessageCreated::dispatch($target->id, $message->id, $target->users()->pluck('users.id')->all());
+
+        if ($target->id === $this->activeChatId) {
+            $this->markChatAsRead($target);
+            $this->showMessageSearch = false;
+            $this->messageSearch = '';
+            $this->messagePage = 1;
+            $this->dispatch('message-sent');
+        }
+
+        $this->dispatch('message-forwarded');
     }
 
     /**
@@ -195,6 +300,10 @@ new #[Layout('layouts::chat')] #[Title('Чат')] class extends Component
             $chat !== null && $chat->users()->whereKey(auth()->id())->exists(),
             403,
         );
+
+        if ($this->replyToMessageId !== null) {
+            $this->activeChatMessage($this->replyToMessageId);
+        }
 
         if ($body === '' && $this->pendingFiles === []) {
             $this->reset('messageBody');
@@ -239,6 +348,7 @@ new #[Layout('layouts::chat')] #[Title('Чат')] class extends Component
                 $message = $chat->messages()->create([
                     'user_id' => auth()->id(),
                     'body' => $body === '' ? null : $body,
+                    'parent_id' => $this->replyToMessageId,
                 ]);
 
                 $message->mentions()->attach($mentionIds);
@@ -297,6 +407,7 @@ new #[Layout('layouts::chat')] #[Title('Чат')] class extends Component
         unset($this->messages, $this->sharedFiles, $this->sharedLinks);
 
         $this->dispatch('message-sent');
+        $this->cancelReply();
     }
 
     /** @return array<string, string> */
@@ -803,7 +914,7 @@ new #[Layout('layouts::chat')] #[Title('Чат')] class extends Component
         unset($this->chats, $this->unreadTotal);
     }
 
-    public function markOpenChatAsRead(int $messageId): void
+    public function markOpenChatAsRead(int $messageId, bool $scrollToLatest = true): void
     {
         $chat = auth()->user()->chats()->whereKey($this->activeChatId)->first();
         abort_unless($chat, 403);
@@ -812,7 +923,9 @@ new #[Layout('layouts::chat')] #[Title('Чат')] class extends Component
         $this->markChatAsRead($chat, $messageId);
         unset($this->chats, $this->unreadTotal, $this->activeChat);
 
-        $this->dispatch('chat-read-through');
+        if ($scrollToLatest) {
+            $this->dispatch('chat-read-through');
+        }
     }
 
     private function prepareChatOpening(Chat $chat): void
@@ -971,6 +1084,11 @@ new #[Layout('layouts::chat')] #[Title('Чат')] class extends Component
             $message['own'] = $isOwn;
             $message['status'] = $isOwn && $readThroughMessageId !== null && $message['id'] <= $readThroughMessageId ? 'read' : 'sent';
             $message['body_segments'] = $this->messageSegments($message);
+            $parent = $message['parent'] ?? null;
+            $message['reply'] = $parent && $parent['chat_id'] === $message['chat_id'] ? [
+                'author' => $parent['user']['name'] ?? __('Пользователь'),
+                'body' => $parent['body'] ?: __('Вложение'),
+            ] : null;
 
             // 3. Вычисляем день для предыдущего сообщения (для сравнения)
             $previousDay = $previous && $previous['created_at']
@@ -1211,7 +1329,7 @@ new #[Layout('layouts::chat')] #[Title('Чат')] class extends Component
         $chat = Chat::findOrFail($this->activeChatId);
 
         $query = $chat->messages()
-            ->with(['user:id,name', 'attachments:id,message_id,file_name,file_type,file_size', 'mentions:id,name']);
+            ->with(['user:id,name', 'attachments:id,message_id,file_name,file_type,file_size', 'mentions:id,name', 'parent:id,chat_id,user_id,body', 'parent.user:id,name', 'forwardedMessage:id,user_id', 'forwardedMessage.user:id,name']);
         $search = trim($this->messageSearch);
 
         if ($search === '') {
@@ -1443,6 +1561,19 @@ new #[Layout('layouts::chat')] #[Title('Чат')] class extends Component
             this.notificationTimeout = setTimeout(() => this.incomingNotification = null, 6000);
             this.playNotificationSound();
         },
+        typeInMessage(event) {
+            if (event.defaultPrevented || event.isComposing || event.ctrlKey || event.metaKey || event.altKey || Array.from(event.key).length !== 1) return;
+            if (event.target.closest('input, textarea, select, [contenteditable], [role=textbox]')) return;
+            if (Array.from(document.querySelectorAll('dialog[open], [role=dialog], [role=alertdialog]')).some(dialog => dialog.getClientRects().length > 0)) return;
+
+            const input = this.$el.querySelector('[data-test=message-input]');
+            if (!input || input.disabled || input.readOnly || input.getClientRects().length === 0) return;
+
+            event.preventDefault();
+            input.focus({ preventScroll: true });
+            input.setRangeText(event.key, input.value.length, input.value.length, 'end');
+            input.dispatchEvent(new Event('input', { bubbles: true }));
+        },
         hasDraggedFiles(event) {
             return Array.from(event.dataTransfer?.types ?? []).includes('Files');
         },
@@ -1461,12 +1592,22 @@ new #[Layout('layouts::chat')] #[Title('Чат')] class extends Component
             this.dragDepth = 0;
             this.draggingFiles = false;
 
+            this.attachFiles(event.dataTransfer.files);
+        },
+        pasteFiles(event) {
+            const files = event.clipboardData?.files;
+            if (!files?.length) return;
+
+            event.preventDefault();
+            this.attachFiles(files);
+        },
+        attachFiles(fileList) {
             if (!this.canAttachFiles()) {
                 this.showDropError(@js(__('Сначала откройте чат, в который хотите отправить файлы.')));
                 return;
             }
 
-            const files = Array.from(event.dataTransfer.files);
+            const files = Array.from(fileList);
             if (files.length === 0) return;
 
             if (($wire.pendingFiles?.length ?? 0) + files.length > 3) {
@@ -1483,7 +1624,7 @@ new #[Layout('layouts::chat')] #[Title('Чат')] class extends Component
             if (!input) return;
 
             this.dropError = '';
-            input.files = event.dataTransfer.files;
+            input.files = fileList;
             input.dispatchEvent(new Event('change', { bubbles: true }));
         },
     }"
@@ -1493,6 +1634,7 @@ new #[Layout('layouts::chat')] #[Title('Чат')] class extends Component
     x-on:drop="dropFiles($event)"
     x-on:pointerdown.once="unlockSound()"
     x-on:keydown.once="unlockSound()"
+    x-on:keydown.window="typeInMessage($event)"
     x-on:incoming-chat-message.window="notifyIncomingMessage($event.detail)"
 >
     <button
@@ -1598,6 +1740,7 @@ new #[Layout('layouts::chat')] #[Title('Чат')] class extends Component
             :show-mention-picker="$showMentionPicker"
             :mention-candidates="$showMentionPicker ? $this->mentionCandidates : []"
             :pending-files="$pendingFiles"
+            :reply="$this->replyPreview"
         />
     </main>
     @else
@@ -1622,6 +1765,22 @@ new #[Layout('layouts::chat')] #[Title('Чат')] class extends Component
     />
 
     <x-chat.invite-colleague-modal :colleagues="$this->invitableColleagues" :selected-invitee-id="$selectedInviteeId" :show="$showInviteModal" />
+
+    <flux:modal wire:model.self="showForwardModal" class="md:w-96" data-test="forward-message-modal">
+        @if ($showForwardModal)
+            <div class="space-y-4">
+                <flux:heading>{{ __('Переслать сообщение') }}</flux:heading>
+                <flux:input wire:model.live.debounce.200ms="forwardSearch" :placeholder="__('Найти чат')" :aria-label="__('Найти чат для пересылки')" />
+                <div class="max-h-80 space-y-2 overflow-y-auto">
+                    @forelse ($this->forwardChats as $chat)
+                        <flux:button class="w-full" wire:key="forward-chat-{{ $chat['id'] }}" wire:click="forwardMessage({{ $chat['id'] }})" wire:loading.attr="disabled" wire:target="forwardMessage">{{ $chat['title'] }}</flux:button>
+                    @empty
+                        <flux:text>{{ __('Чаты не найдены') }}</flux:text>
+                    @endforelse
+                </div>
+            </div>
+        @endif
+    </flux:modal>
 
     <flux:modal wire:model="showMessageReadersModal" class="md:w-96" data-test="message-readers-modal">
         @if ($showMessageReadersModal)

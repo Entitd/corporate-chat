@@ -17,20 +17,24 @@
         userNavigated: false,
         followingNewMessages: false,
         readingMessageId: null,
+        lastMarkedMessageId: 0,
         isAtBottom() {
             return $el.scrollTop + $el.clientHeight >= $el.scrollHeight - 24;
         },
         markMessageRead(messageId) {
-            if (!messageId || this.readingMessageId === messageId) return;
+            if (!messageId || this.readingMessageId !== null || messageId <= this.lastMarkedMessageId || messageId <= Number($el.dataset.lastReadMessageId)) return;
 
             this.readingMessageId = messageId;
-            $wire.markOpenChatAsRead(messageId).finally(() => {
+            $wire.markOpenChatAsRead(messageId, false).then(() => {
+                this.lastMarkedMessageId = messageId;
+            }).finally(() => {
                 if (this.readingMessageId === messageId) this.readingMessageId = null;
+                if (this.lastMarkedMessageId === messageId) this.readVisibleMessages();
             });
         },
         readVisibleWithoutScrolling() {
             if ($el.dataset.hasUnread !== 'true' || $el.dataset.searching === 'true') return false;
-            if ($el.scrollHeight > $el.clientHeight + 1 || document.visibilityState !== 'visible' || !$el.getClientRects().length) return false;
+            if ($el.scrollHeight > $el.clientHeight + 1 || document.visibilityState !== 'visible' || !document.hasFocus() || !$el.getClientRects().length) return false;
 
             const lastMessage = [...$el.querySelectorAll('[data-chat-message-id]')].at(-1);
             if (!lastMessage) return false;
@@ -38,6 +42,18 @@
             this.followingNewMessages = true;
             this.markMessageRead(Number(lastMessage.dataset.chatMessageId));
             return true;
+        },
+        readVisibleMessages() {
+            if ($el.dataset.hasUnread !== 'true' || $el.dataset.searching === 'true') return;
+            if (document.visibilityState !== 'visible' || !document.hasFocus() || !$el.getClientRects().length) return;
+
+            const viewport = $el.getBoundingClientRect();
+            const visibleMessages = [...$el.querySelectorAll('[data-chat-message-id]')].filter(message => {
+                const bounds = message.getBoundingClientRect();
+                return bounds.bottom > viewport.top && bounds.bottom <= viewport.bottom && bounds.top < viewport.bottom;
+            });
+            const lastMessage = visibleMessages.at(-1);
+            if (lastMessage) this.markMessageRead(Number(lastMessage.dataset.chatMessageId));
         },
         scrollToOpeningPosition() {
             if ($el.dataset.hasUnread !== 'true' || $el.dataset.searching === 'true') {
@@ -54,33 +70,27 @@
                 : 0;
         },
         handleScroll() {
+            this.followingNewMessages = this.isAtBottom() && $el.dataset.searching !== 'true';
             if (!this.userNavigated) return;
             this.userNavigated = false;
-            this.followingNewMessages = this.isAtBottom() && $el.dataset.searching !== 'true';
             if (!this.followingNewMessages || $el.dataset.hasUnread !== 'true') return;
 
-            const lastMessage = [...$el.querySelectorAll('[data-chat-message-id]')].at(-1);
-            if (lastMessage) this.markMessageRead(Number(lastMessage.dataset.chatMessageId));
+            this.readVisibleMessages();
         },
         handleIncomingMessage(event) {
-            this.userNavigated = false;
             if (Number(event.detail.chatId) !== Number($el.dataset.chatId)) return;
-            if (this.readVisibleWithoutScrolling()) return;
-            if (!this.followingNewMessages || document.visibilityState !== 'visible' || !$el.getClientRects().length) return;
+            if ($el.dataset.searching === 'true' || !this.followingNewMessages || !$el.getClientRects().length) return;
 
-            this.markMessageRead(Number(event.detail.messageId));
+            this.$nextTick(() => {
+                $el.scrollTop = $el.scrollHeight;
+                this.readVisibleMessages();
+            });
         },
         handleVisibilityChange() {
-            if (document.visibilityState !== 'visible') return;
-            if (this.readVisibleWithoutScrolling()) return;
-            if (!this.followingNewMessages || !$el.getClientRects().length) return;
-            if ($el.dataset.hasUnread !== 'true' || $el.dataset.searching === 'true') return;
-
-            const lastMessage = [...$el.querySelectorAll('[data-chat-message-id]')].at(-1);
-            if (lastMessage) this.markMessageRead(Number(lastMessage.dataset.chatMessageId));
+            this.readVisibleMessages();
         },
     }"
-    x-init="$nextTick(() => { scrollToOpeningPosition(); followingNewMessages = $el.dataset.hasUnread !== 'true' && $el.dataset.searching !== 'true'; readVisibleWithoutScrolling() })"
+    x-init="$nextTick(() => { scrollToOpeningPosition(); followingNewMessages = isAtBottom() && $el.dataset.searching !== 'true'; readVisibleWithoutScrolling() })"
     data-chat-id="{{ $chat['id'] }}"
     data-last-read-message-id="{{ $lastReadMessageId }}"
     data-has-unread="{{ $hasUnread ? 'true' : 'false' }}"
@@ -88,10 +98,12 @@
     x-on:wheel="userNavigated = true"
     x-on:touchmove.passive="userNavigated = true; if (document.activeElement?.matches('[data-test=message-input]')) document.activeElement.blur()"
     x-on:keydown="if (['ArrowDown', 'PageDown', 'End', ' '].includes($event.key)) userNavigated = true"
-    x-on:scroll.debounce.150ms="handleScroll()"
+    x-on:scroll="handleScroll()"
+    x-on:mousemove.throttle.200ms.window="readVisibleMessages()"
     x-on:resize.window="$nextTick(() => readVisibleWithoutScrolling())"
     @incoming-chat-message.window="handleIncomingMessage($event)"
     x-on:visibilitychange.document="handleVisibilityChange()"
+    x-on:focus.window="readVisibleMessages()"
     @message-sent.window="$nextTick(() => { $el.scrollTop = $el.scrollHeight })"
     @chat-read-through.window="$nextTick(() => { $el.scrollTop = $el.scrollHeight; followingNewMessages = true })"
     @message-search-updated.window="$nextTick(() => { $el.scrollTop = 0 })"

@@ -3,18 +3,29 @@
     'showMentionPicker' => false,
     'mentionCandidates' => [],
     'pendingFiles' => [],
+    'reply' => null,
 ])
 
 <div
     class="shrink-0 border-t border-zinc-200 bg-white px-2 pb-[max(0.75rem,env(safe-area-inset-bottom))] pt-2 lg:px-3 lg:py-3 dark:border-zinc-700 dark:bg-zinc-800"
     x-data="{ sending: false, uploading: false, uploadProgress: 0 }"
     @mention-inserted.window="$nextTick(() => $refs.messageInput?.focus())"
+    @message-reply-selected.window="$nextTick(() => $refs.messageInput?.focus())"
     x-on:livewire-upload-start="uploading = true; uploadProgress = 0"
     x-on:livewire-upload-progress="uploadProgress = $event.detail.progress"
     x-on:livewire-upload-finish="uploading = false"
     x-on:livewire-upload-error="uploading = false"
 >
     <div class="mx-auto max-w-3xl">
+        @if ($reply)
+            <div class="mb-2 flex items-center gap-2 border-s-2 border-accent px-3 py-2" data-test="reply-preview">
+                <div class="min-w-0 flex-1 text-xs">
+                    <p class="font-medium">{{ __('Ответ') }} · {{ $reply['author'] }}</p>
+                    <p class="truncate text-zinc-500 dark:text-zinc-400">{{ $reply['body'] }}</p>
+                </div>
+                <flux:button size="sm" variant="ghost" icon="x-mark" square wire:click="cancelReply" :aria-label="__('Отменить ответ')" />
+            </div>
+        @endif
         @if ($showMentionPicker)
             <div
                 class="mb-2 max-h-56 overflow-y-auto rounded-xl border border-zinc-200 bg-white p-2 shadow-lg dark:border-zinc-700 dark:bg-zinc-900"
@@ -81,6 +92,7 @@
                 :placeholder="__('Написать сообщение…')"
                 :aria-label="__('Новое сообщение')"
                 data-test="message-input"
+                x-on:paste="pasteFiles($event)"
                 @keydown.enter="if ($event.shiftKey || $event.isComposing) return; $event.preventDefault(); if (sending || uploading) return; sending = true; $wire.sendMessage($event.target.value).finally(() => sending = false)"
             />
 
@@ -97,7 +109,7 @@
 
         <p class="mt-2 hidden px-1 text-[11px] text-zinc-400 lg:block">
             {{ __('Enter — отправить, Shift + Enter — новая строка') }}
-            {{ __('· перетащите файлы сюда или нажмите на скрепку') }}
+            {{ __('· Ctrl + V — вставить файлы, также можно перетащить их сюда или нажать на скрепку') }}
             {{ __('· до 3 файлов по 2 МБ') }}
 
             @if ($chat['type'] === 'group')
