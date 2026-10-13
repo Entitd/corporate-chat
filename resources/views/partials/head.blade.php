@@ -10,6 +10,14 @@
 <link rel="icon" href="/favicon.svg" type="image/svg+xml">
 <link rel="apple-touch-icon" href="/apple-touch-icon.png">
 
+<link rel="manifest" href="/manifest.webmanifest">
+<meta name="theme-color" content="#0284c7">
+
+@auth
+    <meta name="webpush-public-key" content="{{ config('webpush.public_key') }}">
+    <meta name="webpush-subscription-url" content="{{ route('push-subscriptions.store', [], false) }}">
+@endauth
+
 @fonts
 
 @vite(['resources/css/app.css', 'resources/js/app.js'])

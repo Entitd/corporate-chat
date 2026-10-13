@@ -1,0 +1,15 @@
+{
+    "id": "/chat",
+    "name": "Корпоративный чат",
+    "short_name": "Чат",
+    "lang": "ru",
+    "start_url": "/chat",
+    "scope": "/",
+    "display": "standalone",
+    "background_color": "#ffffff",
+    "theme_color": "#0284c7",
+    "icons": [
+        { "src": "/apple-touch-icon.png", "sizes": "166x166", "type": "image/png" },
+        { "src": "/favicon.svg", "sizes": "any", "type": "image/svg+xml" }
+    ]
+}

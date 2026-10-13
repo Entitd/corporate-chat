@@ -82,6 +82,8 @@
         </div>
     </div>
 
+    <x-chat.push-notifications />
+
     {{-- Поиск --}}
     <div class="px-4 pt-2 lg:px-3 lg:pt-3 [&_[data-flux-input]]:rounded-xl">
         <flux:input
