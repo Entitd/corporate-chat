@@ -30,6 +30,7 @@ function seedCrmUsers(array $users): Connection
         $table->string('last_name')->nullable();
         $table->string('status');
         $table->boolean('deleted')->default(false);
+        $table->boolean('receive_notifications')->default(true);
         $table->boolean('is_group')->default(false);
         $table->boolean('portal_only')->default(false);
         $table->boolean('external_auth_only')->default(false);
@@ -175,6 +176,7 @@ test('initial synchronization excludes inactive and non employee CRM accounts', 
     seedCrmUsers([
         ['id' => 'crm-group', 'user_name' => '', 'is_group' => true],
         ['id' => 'crm-inactive', 'user_name' => '', 'status' => 'Inactive'],
+        ['id' => 'crm-no-notifications', 'receive_notifications' => false],
         ['id' => '', 'user_name' => '', 'deleted' => true],
         [],
     ]);
@@ -185,6 +187,7 @@ test('initial synchronization excludes inactive and non employee CRM accounts', 
     $this->assertDatabaseHas('users', ['crm_id' => 'crm-ivan']);
     $this->assertDatabaseMissing('users', ['crm_id' => 'crm-group']);
     $this->assertDatabaseMissing('users', ['crm_id' => 'crm-inactive']);
+    $this->assertDatabaseMissing('users', ['crm_id' => 'crm-no-notifications']);
 });
 
 test('synchronization disables unavailable CRM users and revokes remembered access', function (array $changes) {

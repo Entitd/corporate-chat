@@ -103,7 +103,7 @@ class SyncCrmUsers extends Command
 
                     continue;
                 }
-                
+
                 if (! $receiveNotifications) {
                     $this->line("Запись №{$seen} пропущена: на аккаунте отключечны уведомления.", verbosity: 'v');
 

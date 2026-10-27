@@ -7,11 +7,12 @@ use Illuminate\Database\Eloquent\Relations\HasMany;
 
 class ChatUser extends Model
 {
-    protected $filable = [
+    protected $fillable = [
         'role',
-        'last_read_at   ',
+        'last_read_at',
     ];
 
+    /** @return HasMany<User, $this> */
     public function users(): HasMany
     {
         return $this->hasMany(User::class, 'user_id');

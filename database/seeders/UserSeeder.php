@@ -2,11 +2,10 @@
 
 namespace Database\Seeders;
 
-use App\Models\User;
 use App\Models\Chat;
 use App\Models\ChatUser;
 use App\Models\Message;
-use Illuminate\Database\Console\Seeds\WithoutModelEvents;
+use App\Models\User;
 use Illuminate\Database\Seeder;
 use Illuminate\Support\Facades\Hash;
 
@@ -106,7 +105,6 @@ class UserSeeder extends Seeder
             'user_id' => 2,
             'body' => 'I\'m fine, thank you!',
         ]);
-
 
         Message::create([
             'chat_id' => 3,

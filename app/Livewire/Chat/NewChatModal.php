@@ -1,17 +1,24 @@
-<?php 
+<?php
 
 namespace App\Livewire\Chat;
 
 use App\Models\Chat;
 use App\Models\User;
+use Illuminate\Http\RedirectResponse;
+use Illuminate\Support\Collection;
 use Livewire\Component;
 
 class NewChatModal extends Component
 {
     public bool $showNewChatModal = false;
+
     public string $mode = 'direct'; // 'direct' или 'group'
+
     public string $colleagueSearch = '';
+
+    /** @var array<int, int|string> */
     public array $selectedColleagues = []; // Сюда падают ID или имена выбранных коллег
+
     public string $groupName = ''; // Если захотите добавить поле ввода названия группы
 
     // Метод переключения режимов (вызывается по кнопкам Личный чат / Группа)
@@ -22,29 +29,29 @@ class NewChatModal extends Component
     }
 
     // Метод создания чата (привязан к кнопке "Написать сообщение" / "Создать группу")
-    public function createChat()
+    public function createChat(): ?RedirectResponse
     {
         $currentUserId = auth()->id();
 
         if ($this->mode === 'direct') {
             // Для личного чата у нас выбран ровно 1 коллега (его ID)
             $targetUserId = reset($this->selectedColleagues);
-            
-            if (!$targetUserId) {
-                return;
+
+            if (! $targetUserId) {
+                return null;
             }
 
-            // Ищем существующий приватный чат между этими двумя пользователями, 
+            // Ищем существующий приватный чат между этими двумя пользователями,
             // чтобы не плодить дубликаты
             $chat = Chat::where('type', 'private')
-                ->whereHas('users', fn($q) => $q->where('user_id', $currentUserId))
-                ->whereHas('users', fn($q) => $q->where('user_id', $targetUserId))
+                ->whereHas('users', fn ($q) => $q->where('user_id', $currentUserId))
+                ->whereHas('users', fn ($q) => $q->where('user_id', $targetUserId))
                 ->first();
 
             // Если чата еще нет — создаем новый
-            if (!$chat) {
+            if (! $chat) {
                 $chat = Chat::create(['type' => 'private']);
-                
+
                 // Привязываем обоих пользователей через таблицу chat_user
                 $chat->users()->attach([$currentUserId, $targetUserId]);
             }
@@ -52,7 +59,7 @@ class NewChatModal extends Component
         } else {
             // Создание группового чата
             if (empty($this->selectedColleagues)) {
-                return;
+                return null;
             }
 
             // Создаем групповой чат
@@ -63,19 +70,19 @@ class NewChatModal extends Component
 
             // Собираем всех выбранных участников + текущего пользователя (он создатель/админ)
             $participantIds = array_merge($this->selectedColleagues, [$currentUserId]);
-            
+
             // Привязываем пользователей. Создателя можно сделать 'admin'
             $usersData = [];
             foreach ($participantIds as $id) {
                 $usersData[$id] = ['role' => ($id === $currentUserId) ? 'admin' : 'member'];
             }
-            
+
             $chat->users()->attach($usersData);
         }
 
         // Закрываем модалку
         $this->showNewChatModal = false;
-        
+
         // Сбрасываем состояние
         $this->reset(['selectedColleagues', 'groupName', 'colleagueSearch']);
 
@@ -83,14 +90,15 @@ class NewChatModal extends Component
         return redirect()->route('chat.show', $chat);
     }
 
-    public function render()
+    /** @return Collection<int, array{id: int, name: string}> */
+    public function render(): Collection
     {
         // Динамический поиск коллег с учетом фильтра ввода
         $colleagues = User::query()
             ->where('id', '!=', auth()->id()) // Исключаем себя из списка
             ->when($this->colleagueSearch, function ($query) {
-                $query->where('name', 'like', '%' . $this->colleagueSearch . '%')
-                      ->orWhere('position', 'like', '%' . $this->colleagueSearch . '%');
+                $query->where('name', 'like', '%'.$this->colleagueSearch.'%')
+                    ->orWhere('position', 'like', '%'.$this->colleagueSearch.'%');
             })
             ->get()
             ->map(function ($user) {

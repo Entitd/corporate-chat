@@ -2,6 +2,7 @@
 
 use App\Models\User;
 use Illuminate\Auth\Events\Verified;
+use Illuminate\Contracts\Auth\MustVerifyEmail;
 use Illuminate\Support\Facades\Event;
 use Illuminate\Support\Facades\URL;
 use Laravel\Fortify\Features;
@@ -18,12 +19,14 @@ test('email verification screen can be rendered', function () {
     $response->assertOk();
 });
 
-test('unverified users are redirected to the email verification prompt', function () {
+test('users can access appearance settings without mandatory email verification', function () {
     $user = User::factory()->unverified()->create();
 
     $response = $this->actingAs($user)->get(route('appearance.edit'));
 
-    $response->assertRedirect(route('verification.notice'));
+    expect($user)->not->toBeInstanceOf(MustVerifyEmail::class);
+
+    $response->assertOk();
 });
 
 test('email can be verified', function () {

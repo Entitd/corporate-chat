@@ -14,6 +14,7 @@ class Chat extends Model
         'type',
     ];
 
+    /** @return BelongsToMany<User, $this> */
     public function users(): BelongsToMany
     {
         // 2-й аргумент: имя промежуточной таблицы (обычно chat_user по конвенции, либо chat_users)
@@ -22,11 +23,13 @@ class Chat extends Model
         return $this->belongsToMany(User::class, 'chat_users', 'chat_id', 'user_id');
     }
 
+    /** @return HasMany<Message, $this> */
     public function messages(): HasMany
     {
         return $this->hasMany(Message::class, 'chat_id');
     }
 
+    /** @return HasOne<Message, $this> */
     public function latestMessage(): HasOne
     {
         return $this->hasOne(Message::class, 'chat_id')->latestOfMany();

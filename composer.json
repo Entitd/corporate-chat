@@ -9,7 +9,7 @@
     ],
     "license": "MIT",
     "require": {
-        "php": "^8.3",
+        "php": "~8.5.12",
         "laravel/chisel": "^0.1.0",
         "laravel/fortify": "^1.37.2",
         "laravel/framework": "^13.17",
@@ -69,9 +69,7 @@
             "Composer\\Config::disableProcessTimeout",
             "@test"
         ],
-        "types:check": [
-            "phpstan analyse"
-        ],
+        "types:check": "phpstan analyse --memory-limit=512M",
         "test": [
             "@php artisan config:clear --ansi",
             "@lint:check",
