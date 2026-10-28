@@ -1,4 +1,4 @@
-<div x-data="chatPushNotifications()" class="border-b border-zinc-200 px-4 py-3 dark:border-zinc-700" data-test="push-notifications">
+<div wire:ignore x-data="chatPushNotifications()" class="border-b border-zinc-200 px-4 py-3 dark:border-zinc-700" data-test="push-notifications">
     <flux:button size="sm" class="w-full" x-on:click="toggle()" x-bind:disabled="busy">
         <span x-text="busy ? 'Подождите…' : (enabled ? 'Отключить push на устройстве' : 'Включить уведомления')"></span>
     </flux:button>

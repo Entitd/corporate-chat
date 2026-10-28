@@ -16,7 +16,7 @@ function setup({ permission = 'granted', installed = true, ios = true, existing 
     const navigator = { userAgent: ios ? 'iPhone' : 'Chrome', platform: '', serviceWorker: {
         register: async () => { calls.push('register'); return registration; }, ready: Promise.resolve(registration),
     } };
-    const Notification = { permission, requestPermission: () => { calls.push('permission'); return Promise.resolve(permission); } };
+    const Notification = { permission, requestPermission: () => { calls.push('permission'); return Promise.resolve(permission === 'default' ? 'granted' : permission); } };
     const document = { querySelector: selector => ({ content: selector.includes('public-key') ? 'B'.repeat(87) : selector.includes('csrf-token') ? 'csrf' : '/chat/push-subscriptions' }) };
     const fetch = async (url, options) => { calls.push(['fetch', url, options]); return { ok: responseOK }; };
     const state = new Function('window', 'navigator', 'document', 'Notification', 'fetch', 'atob', source + ';return chatPushNotifications();')(window, navigator, document, Notification, fetch, atob);
@@ -32,7 +32,7 @@ test('iPhone in a browser tab explains installation without requesting permissio
 });
 
 test('enabling push requests permission first and stores the device with CSRF protection', async () => {
-    const { state, calls } = setup();
+    const { state, calls } = setup({ permission: 'default' });
     await state.toggle();
     assert.equal(calls[0], 'permission');
     const request = calls.find(call => call[0] === 'fetch');

@@ -1,3 +1,11 @@
+function withTimeout(operation, message, milliseconds = 20000) {
+    let timer;
+    return Promise.race([
+        operation,
+        new Promise((_, reject) => { timer = setTimeout(() => reject(new Error(message)), milliseconds); }),
+    ]).finally(() => clearTimeout(timer));
+}
+
 export function chatPushNotifications() {
     return {
         busy: false,
@@ -16,28 +24,61 @@ export function chatPushNotifications() {
             if (this.needsInstallation || !this.supported || !this.publicKey) return;
             this.busy = true;
             try {
-                await navigator.serviceWorker.register('/sw.js', { updateViaCache: 'none' });
-                this.registration = await navigator.serviceWorker.ready;
-                const subscription = await this.registration.pushManager.getSubscription();
+                await this.prepareRegistration();
+                const subscription = await this.currentSubscription();
                 if (subscription && Notification.permission === 'granted') {
                     await this.save(subscription);
                     this.enabled = true;
                 }
-            } catch {
-                this.message = 'Не удалось подготовить уведомления. Обновите страницу и попробуйте снова.';
+            } catch (error) {
+                this.message = this.errorMessage(error);
             } finally { this.busy = false; }
         },
+        async prepareRegistration() {
+            await withTimeout(navigator.serviceWorker.register('/sw.js', { updateViaCache: 'none' }),
+                'Браузер не смог загрузить службу уведомлений. Проверьте соединение и обновите страницу.');
+            this.registration = await withTimeout(navigator.serviceWorker.ready,
+                'Служба уведомлений не запускается. Обновите страницу и попробуйте снова.');
+        },
+        currentSubscription() {
+            return withTimeout(this.registration.pushManager.getSubscription(),
+                'Браузер не отвечает при проверке подписки. Обновите страницу и попробуйте снова.');
+        },
+        errorMessage(error) {
+            if (error?.name === 'NotAllowedError' || (typeof Notification !== 'undefined' && Notification.permission === 'denied')) {
+                return 'Уведомления запрещены. Разрешите их для этого сайта в браузере и для Opera в настройках Android → Приложения → Opera → Уведомления.';
+            }
+            if (error?.name === 'NotSupportedError') {
+                return 'Эта версия браузера не поддерживает push-уведомления. Обновите Opera или откройте чат в Chrome.';
+            }
+            if (error?.name === 'AbortError') {
+                return 'Браузер не смог подключиться к службе push-уведомлений. Проверьте соединение; если включён VPN, попробуйте без него.';
+            }
+            return error?.message || 'Не удалось включить уведомления. Попробуйте снова.';
+        },
         async save(subscription, method = 'POST') {
-            const response = await fetch(this.endpoint, {
-                method,
-                credentials: 'same-origin',
-                headers: {
-                    'Content-Type': 'application/json',
-                    'Accept': 'application/json',
-                    'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]').content,
-                },
-                body: JSON.stringify(subscription.toJSON()),
-            });
+            const controller = new AbortController();
+            const timer = setTimeout(() => controller.abort(), 20000);
+            let response;
+            try {
+                response = await fetch(this.endpoint, {
+                    method,
+                    signal: controller.signal,
+                    credentials: 'same-origin',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'Accept': 'application/json',
+                        'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]').content,
+                    },
+                    body: JSON.stringify(subscription.toJSON()),
+                });
+            } catch (error) {
+                if (controller.signal.aborted) throw new Error('Сервер не ответил за 20 секунд. Проверьте соединение и попробуйте снова.');
+                throw error;
+            } finally { clearTimeout(timer); }
+            if ([401, 403, 419].includes(response.status)) throw new Error('Сессия истекла. Обновите страницу и войдите в аккаунт заново.');
+            if (response.status === 422) throw new Error('Сервер отклонил подписку этого браузера. Сообщите администратору: ошибка подписки 422.');
+            if (response.status === 503) throw new Error('Push-уведомления не настроены на сервере. Сообщите администратору.');
             if (!response.ok) throw new Error('Не удалось сохранить настройки уведомлений. Проверьте подключение и войдите в аккаунт заново.');
         },
         applicationKey() {
@@ -51,37 +92,42 @@ export function chatPushNotifications() {
                 this.message = 'На iPhone: откройте меню «Поделиться», выберите «На экран Домой», затем откройте чат через его иконку.';
                 return;
             }
-            if (!this.supported) { this.message = 'Для уведомлений нужен поддерживаемый браузер и HTTPS. На iPhone требуется iOS 16.4 или новее.'; return; }
+            if (!window.isSecureContext) { this.message = 'Для уведомлений откройте чат по HTTPS: на обычном HTTP телефон не разрешает push-уведомления.'; return; }
+            if (!this.supported) { this.message = 'Этот браузер не поддерживает push-уведомления. Обновите Opera или откройте чат в Chrome. На iPhone требуется iOS 16.4 или новее.'; return; }
             if (!this.publicKey) { this.message = 'Уведомления пока не настроены на сервере.'; return; }
             this.busy = true;
             try {
                 if (this.enabled) {
-                    const subscription = await this.registration.pushManager.getSubscription();
+                    const subscription = await this.currentSubscription();
                     if (subscription) {
                         await this.save(subscription, 'DELETE');
-                        if (!await subscription.unsubscribe()) throw new Error('Не удалось отключить уведомления. Попробуйте снова.');
+                        if (!await withTimeout(subscription.unsubscribe(), 'Браузер не смог отключить подписку. Попробуйте снова.')) throw new Error('Не удалось отключить уведомления. Попробуйте снова.');
                     }
                     this.enabled = false;
                     this.message = 'Уведомления на этом устройстве отключены.';
                     return;
                 }
                 // Request permission directly from the button click, before awaiting registration.
-                const permission = await Notification.requestPermission();
+                const permission = Notification.permission === 'granted' ? 'granted' : await new Promise((resolve, reject) => {
+                    // Some mobile browser versions use the callback API.
+                    const request = Notification.requestPermission(resolve);
+                    request?.then(resolve, reject);
+                });
                 if (permission !== 'granted') {
                     this.message = permission === 'denied'
-                        ? 'Уведомления запрещены. Разрешите их в настройках уведомлений приложения или браузера.'
+                        ? this.errorMessage({ name: 'NotAllowedError' })
                         : 'Чтобы получать уведомления, разрешите их при следующем включении.';
                     return;
                 }
-                await navigator.serviceWorker.register('/sw.js', { updateViaCache: 'none' });
-                this.registration = await navigator.serviceWorker.ready;
-                let subscription = await this.registration.pushManager.getSubscription();
-                subscription ??= await this.registration.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: this.applicationKey() });
+                await this.prepareRegistration();
+                let subscription = await this.currentSubscription();
+                subscription ??= await withTimeout(this.registration.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: this.applicationKey() }),
+                    'Браузер не смог подключиться к службе push за 20 секунд. Проверьте соединение и попробуйте снова.');
                 await this.save(subscription);
                 this.enabled = true;
                 this.message = 'Уведомления включены на этом устройстве.';
             } catch (error) {
-                this.message = error.message || 'Не удалось включить уведомления. Попробуйте снова.';
+                this.message = this.errorMessage(error);
             } finally { this.busy = false; }
         },
     };
