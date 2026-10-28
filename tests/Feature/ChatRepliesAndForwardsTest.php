@@ -25,7 +25,8 @@ test('a reply saves its parent and displays escaped quoted text', function () {
         ->call('sendMessage', 'Ответ на цитату')->assertSet('replyToMessageId', null)
         ->assertDontSee('reply-preview')->assertSee('Ответ на цитату')->assertSee('Автор цитаты');
 
-    $this->assertDatabaseHas('messages', ['chat_id' => $chat->id, 'user_id' => $user->id, 'parent_id' => $source->id, 'body' => 'Ответ на цитату']);
+    $this->assertDatabaseHas('messages', ['chat_id' => $chat->id, 'user_id' => $user->id, 'parent_id' => $source->id]);
+    expect($chat->messages()->latest('id')->firstOrFail()->body)->toBe('Ответ на цитату');
     Event::assertDispatched(MessageCreated::class, fn ($event): bool => $event->chatId === $chat->id);
 });
 
@@ -44,7 +45,8 @@ test('cancelling a reply and changing chats clear the quote', function () {
         ->call('replyToMessage', $source->id)->call('selectChat', $other->id)
         ->assertSet('replyToMessageId', null)->call('sendMessage', 'Без цитаты');
 
-    $this->assertDatabaseHas('messages', ['chat_id' => $other->id, 'body' => 'Без цитаты', 'parent_id' => null]);
+    $this->assertDatabaseHas('messages', ['chat_id' => $other->id, 'parent_id' => null]);
+    expect($other->messages()->sole()->body)->toBe('Без цитаты');
 });
 
 test('forwarding copies text and downloadable attachments and broadcasts to the target', function () {

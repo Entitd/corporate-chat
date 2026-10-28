@@ -8,6 +8,7 @@ use App\Models\ChatUser;
 use App\Models\Message;
 use App\Models\User;
 use App\Notifications\ChatMentioned;
+use App\Services\EncryptedAttachments;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Str;
@@ -262,7 +263,7 @@ new #[Layout('layouts::chat')] #[Title('Чат')] class extends Component
             ]);
 
             foreach ($source->attachments as $attachment) {
-                $message->attachments()->create($attachment->only(['file_path', 'file_name', 'file_type', 'file_size', 'duration']));
+                $message->attachments()->create($attachment->only(['file_path', 'file_name', 'file_type', 'file_size', 'duration', 'is_encrypted']));
             }
 
             return $message;
@@ -356,11 +357,7 @@ new #[Layout('layouts::chat')] #[Title('Чат')] class extends Component
                 foreach ($this->pendingFiles as $file) {
                     $fileName = basename(str_replace('\\', '/', $file->getClientOriginalName()));
                     $fileName = mb_strimwidth(preg_replace('/[[:cntrl:]]/u', '', $fileName) ?: 'file', 0, 255);
-                    $path = $file->store('chat-attachments/'.$chat->id, 'local');
-
-                    if ($path === false) {
-                        throw new \RuntimeException('Не удалось сохранить файл.');
-                    }
+                    $path = app(EncryptedAttachments::class)->store($file, $chat->id);
 
                     $storedPaths[] = $path;
 
@@ -369,6 +366,7 @@ new #[Layout('layouts::chat')] #[Title('Чат')] class extends Component
                         'file_name' => $fileName,
                         'file_type' => $file->getMimeType() ?: 'application/octet-stream',
                         'file_size' => $file->getSize(),
+                        'is_encrypted' => true,
                     ]);
                 }
 

@@ -4,6 +4,7 @@ use App\Http\Controllers\PushSubscriptionController;
 use App\Models\Attachment;
 use App\Models\Chat;
 use App\Models\User;
+use App\Services\EncryptedAttachments;
 use Illuminate\Support\Facades\Route;
 use Illuminate\Support\Facades\Storage;
 
@@ -30,6 +31,15 @@ Route::middleware(['auth', 'verified'])->group(function () {
 
         abort_unless(Storage::disk('local')->exists($attachment->file_path), 404);
 
-        return Storage::disk('local')->download($attachment->file_path, $attachment->file_name);
+        // Verify the ciphertext before sending any bytes to the client.
+        $contents = app(EncryptedAttachments::class)->contents($attachment);
+
+        return response()->streamDownload(function () use ($contents): void {
+            echo $contents;
+        }, $attachment->file_name, [
+            'Content-Type' => 'application/octet-stream',
+            'Cache-Control' => 'private, no-store',
+            'X-Content-Type-Options' => 'nosniff',
+        ]);
     })->name('chat.attachments.download');
 });

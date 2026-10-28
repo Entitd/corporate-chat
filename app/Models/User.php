@@ -9,6 +9,7 @@ use Illuminate\Database\Eloquent\Attributes\Hidden;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Relations\BelongsToMany;
 use Illuminate\Database\Eloquent\Relations\HasMany;
+use Illuminate\Database\Eloquent\Relations\MorphMany;
 use Illuminate\Foundation\Auth\User as Authenticatable;
 use Illuminate\Notifications\Notifiable;
 use Illuminate\Support\Carbon;
@@ -81,6 +82,12 @@ class User extends Authenticatable implements PasskeyUser // MustVerifyEmail,
     public function chats(): BelongsToMany
     {
         return $this->belongsToMany(Chat::class, 'chat_users', 'user_id', 'chat_id');
+    }
+
+    /** @return MorphMany<DatabaseNotification, $this> */
+    public function notifications(): MorphMany
+    {
+        return $this->morphMany(DatabaseNotification::class, 'notifiable')->latest();
     }
 
     /** @return HasMany<Message, $this> */

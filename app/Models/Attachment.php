@@ -13,7 +13,14 @@ class Attachment extends Model
         'file_type',
         'file_size',
         'duration',
+        'is_encrypted',
     ];
+
+    /** @return array<string, string> */
+    protected function casts(): array
+    {
+        return ['is_encrypted' => 'boolean'];
+    }
 
     /** @return BelongsTo<Message, $this> */
     public function message(): BelongsTo

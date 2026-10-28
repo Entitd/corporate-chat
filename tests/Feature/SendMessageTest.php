@@ -23,8 +23,8 @@ test('a participant can send a message to a chat', function () {
     $this->assertDatabaseHas('messages', [
         'chat_id' => $chat->id,
         'user_id' => $user->id,
-        'body' => 'Привет, коллега!',
     ]);
+    expect($chat->messages()->sole()->body)->toBe('Привет, коллега!');
 });
 
 test('sending uses the current editor text and immediately shows the newest message', function () {
@@ -56,9 +56,8 @@ test('sending uses the current editor text and immediately shows the newest mess
     $this->assertDatabaseHas('messages', [
         'chat_id' => $chat->id,
         'user_id' => $user->id,
-        'body' => "Актуальный текст\nВторая строка",
     ]);
-    $this->assertDatabaseMissing('messages', ['body' => 'Текст с задержкой']);
+    expect($chat->messages()->latest('id')->firstOrFail()->body)->toBe("Актуальный текст\nВторая строка");
 });
 
 test('an empty message is not sent', function () {

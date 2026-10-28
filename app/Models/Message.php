@@ -20,6 +20,18 @@ class Message extends Model
         'forwarded_message_id',
     ];
 
+    /** @return array<string, string> */
+    protected function casts(): array
+    {
+        return [
+            'chat_id' => 'integer',
+            'user_id' => 'integer',
+            'parent_id' => 'integer',
+            'forwarded_message_id' => 'integer',
+            'body' => 'encrypted',
+        ];
+    }
+
     /** @return BelongsTo<User, $this> */
     public function user(): BelongsTo
     {
