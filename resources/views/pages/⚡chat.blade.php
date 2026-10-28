@@ -1133,13 +1133,14 @@ new #[Layout('layouts::chat')] #[Title('Чат')] class extends Component
             ->join('users', 'messages.user_id', '=', 'users.id')
             ->where('messages.chat_id', $this->activeChatId)
             ->whereNull('messages.deleted_at')
-            ->select('attachments.id', 'attachments.file_name', 'attachments.file_size', 'users.name as author')
+            ->select('attachments.id', 'attachments.file_name', 'attachments.file_type', 'attachments.file_size', 'users.name as author')
             ->get()
             ->map(fn (Attachment $file): array => [
                 'name' => $file->file_name,
                 'size' => $file->file_size === null ? '—' : number_format($file->file_size / 1024, 1).' КБ',
                 'author' => $file->author,
                 'url' => route('chat.attachments.download', $file->id),
+                'attachment' => $file->toArray(),
             ])
             ->all();
     }
@@ -1782,6 +1783,8 @@ new #[Layout('layouts::chat')] #[Title('Чат')] class extends Component
             :links="$this->sharedLinks"
         />
     @endif
+
+    <x-chat.attachment-preview />
 
     <x-chat.new-chat-modal
         :colleagues="$this->colleagues"

@@ -90,25 +90,32 @@ test('a sender does not receive an incoming message notification for their own m
 });
 
 test('message ownership is preserved when the database returns foreign keys as strings', function () {
-    DB::connection()->getPdo()->setAttribute(PDO::ATTR_STRINGIFY_FETCHES, true);
-    $sender = User::factory()->create();
-    $recipient = User::factory()->create();
-    $chat = Chat::create(['type' => 'direct']);
-    $chat->users()->attach([$sender->id, $recipient->id]);
-    $message = $chat->messages()->create(['user_id' => $sender->id, 'body' => 'Моё сообщение']);
-    $this->actingAs($sender);
+    $pdo = DB::connection()->getPdo();
+    $stringifyFetches = $pdo->getAttribute(PDO::ATTR_STRINGIFY_FETCHES);
+    $pdo->setAttribute(PDO::ATTR_STRINGIFY_FETCHES, true);
 
-    $component = Livewire::test('pages::chat')->call('selectChat', $chat->id);
-    expect($component->instance()->messages['data'][0]['own'])->toBeTrue();
-    $component->dispatch('echo-private:users.'.$sender->id.',.chat.message.created', ['chatId' => $chat->id, 'messageId' => $message->id])
-        ->assertNotDispatched('incoming-chat-message');
-    expect($component->instance()->messages['data'][0]['own'])->toBeTrue();
+    try {
+        $sender = User::factory()->create();
+        $recipient = User::factory()->create();
+        $chat = Chat::create(['type' => 'direct']);
+        $chat->users()->attach([$sender->id, $recipient->id]);
+        $message = $chat->messages()->create(['user_id' => $sender->id, 'body' => 'Моё сообщение']);
+        $this->actingAs($sender);
 
-    $this->actingAs($recipient);
-    $component = Livewire::test('pages::chat')->call('selectChat', $chat->id);
-    expect($component->instance()->messages['data'][0]['own'])->toBeFalse();
-    $component->dispatch('echo-private:users.'.$recipient->id.',.chat.message.created', ['chatId' => $chat->id, 'messageId' => $message->id])
-        ->assertDispatched('incoming-chat-message');
+        $component = Livewire::test('pages::chat')->call('selectChat', $chat->id);
+        expect($component->instance()->messages['data'][0]['own'])->toBeTrue();
+        $component->dispatch('echo-private:users.'.$sender->id.',.chat.message.created', ['chatId' => $chat->id, 'messageId' => $message->id])
+            ->assertNotDispatched('incoming-chat-message');
+        expect($component->instance()->messages['data'][0]['own'])->toBeTrue();
+
+        $this->actingAs($recipient);
+        $component = Livewire::test('pages::chat')->call('selectChat', $chat->id);
+        expect($component->instance()->messages['data'][0]['own'])->toBeFalse();
+        $component->dispatch('echo-private:users.'.$recipient->id.',.chat.message.created', ['chatId' => $chat->id, 'messageId' => $message->id])
+            ->assertDispatched('incoming-chat-message');
+    } finally {
+        $pdo->setAttribute(PDO::ATTR_STRINGIFY_FETCHES, $stringifyFetches);
+    }
 });
 
 test('a broadcast for a message outside the recipient chat does not create a notification', function () {

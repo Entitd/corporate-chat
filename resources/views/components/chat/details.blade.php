@@ -113,18 +113,9 @@
             </div>
 
             @forelse ($files as $file)
-                <a href="{{ $file['url'] }}" class="flex items-center gap-3 rounded-lg px-2 py-1.5 hover:bg-zinc-800/5 dark:hover:bg-white/5" wire:key="file-{{ $loop->index }}">
-                    <span class="flex size-8 shrink-0 items-center justify-center rounded-lg bg-zinc-100 text-zinc-500 dark:bg-zinc-700 dark:text-zinc-300">
-                        <flux:icon.document class="size-4" />
-                    </span>
-
-                    <span class="min-w-0 flex-1">
-                        <span class="block truncate text-xs font-medium text-zinc-900 dark:text-white">{{ $file['name'] }}</span>
-                        <span class="block truncate text-[11px] text-zinc-500 dark:text-zinc-400">{{ $file['author'] }} · {{ $file['size'] }}</span>
-                    </span>
-
-                    <flux:icon.arrow-down-tray class="size-4 shrink-0 text-zinc-400" />
-                </a>
+                <div wire:key="file-{{ $file['attachment']['id'] }}">
+                    <x-chat.attachment :attachment="$file['attachment']" compact />
+                </div>
             @empty
                 <p class="px-2 py-2 text-xs text-zinc-400">{{ __('В этом чате ещё нет файлов') }}</p>
             @endforelse
