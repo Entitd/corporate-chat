@@ -49,7 +49,7 @@ test('participant can send files without text and download them privately', func
     $this->get(route('chat.attachments.download', $attachment))->assertForbidden();
 });
 
-test('oversized file cannot be sent', function () {
+test('a file at the 50 MB limit can be uploaded and sent', function () {
     Storage::fake('local');
     $user = User::factory()->create();
     $chat = chatWithMembers($user);
@@ -57,10 +57,68 @@ test('oversized file cannot be sent', function () {
 
     Livewire::test('pages::chat')
         ->call('selectChat', $chat->id)
-        ->set('pendingFiles', [UploadedFile::fake()->create('large.bin', 2049)])
+        ->set('pendingFiles', [UploadedFile::fake()->create('large.bin', 51200)])
+        ->assertHasNoErrors()
+        ->call('sendMessage')
+        ->assertHasNoErrors()
+        ->assertSet('pendingFiles', []);
+
+    expect($chat->messages()->count())->toBe(1);
+    expect(Attachment::where('file_name', 'large.bin')->exists())->toBeTrue();
+});
+
+test('temporary uploads enforce the 50 MB file limit', function () {
+    $validator = validator(
+        ['file' => UploadedFile::fake()->create('large.bin', 51201)],
+        ['file' => config('livewire.temporary_file_upload.rules')],
+    );
+
+    expect($validator->fails())->toBeTrue();
+    expect($validator->failed()['file'])->toHaveKey('Max');
+});
+
+test('chat validation and interface use the configured attachment limit', function () {
+    config(['chat.attachment_max_size_mb' => 7]);
+    Storage::fake('local');
+    $user = User::factory()->create();
+    $chat = chatWithMembers($user);
+    $this->actingAs($user);
+
+    Livewire::test('pages::chat')
+        ->call('selectChat', $chat->id)
+        ->assertSee('до 3 файлов по 7 МБ')
+        ->assertSee('data-max-file-size="7340032"', false)
+        ->set('pendingFiles', [UploadedFile::fake()->create('large.bin', 7169)])
         ->call('sendMessage')
         ->assertHasErrors(['pendingFiles.0' => 'max'])
-        ->assertSee('Файл должен быть не больше 2 МБ.');
+        ->assertSee('Файл должен быть не больше 7 МБ.');
+
+    expect($chat->messages()->count())->toBe(0);
+
+    Livewire::test('pages::chat')
+        ->call('selectChat', $chat->id)
+        ->set('pendingFiles', [UploadedFile::fake()->create('allowed.bin', 7168)])
+        ->call('sendMessage')
+        ->assertHasNoErrors()
+        ->assertSet('pendingFiles', []);
+
+    expect($chat->messages()->count())->toBe(1);
+});
+
+test('oversized file cannot be sent', function () {
+    // Bypass the temporary upload limit to verify validation when sending.
+    config(['livewire.temporary_file_upload.rules' => ['required', 'file']]);
+    Storage::fake('local');
+    $user = User::factory()->create();
+    $chat = chatWithMembers($user);
+    $this->actingAs($user);
+
+    Livewire::test('pages::chat')
+        ->call('selectChat', $chat->id)
+        ->set('pendingFiles', [UploadedFile::fake()->create('large.bin', 51201)])
+        ->call('sendMessage')
+        ->assertHasErrors(['pendingFiles.0' => 'max'])
+        ->assertSee('Файл должен быть не больше 50 МБ.');
 
     expect($chat->messages()->count())->toBe(0);
 });

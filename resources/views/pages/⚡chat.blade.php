@@ -315,10 +315,10 @@ new #[Layout('layouts::chat')] #[Title('Чат')] class extends Component
         $this->validate([
             'messageBody' => ['string', 'max:5000'],
             'pendingFiles' => ['array', 'max:3'],
-            'pendingFiles.*' => ['file', 'max:2048'],
+            'pendingFiles.*' => ['file', 'max:'.(config('chat.attachment_max_size_mb') * 1024)],
         ], [
             'pendingFiles.max' => __('Можно прикрепить не больше 3 файлов.'),
-            'pendingFiles.*.max' => __('Файл должен быть не больше 2 МБ.'),
+            'pendingFiles.*.max' => __('Файл должен быть не больше :size МБ.', ['size' => config('chat.attachment_max_size_mb')]),
         ]);
 
         $mentionIds = array_values(array_unique(array_map('intval', $this->selectedMentionIds)));
@@ -1451,6 +1451,8 @@ new #[Layout('layouts::chat')] #[Title('Чат')] class extends Component
 <div
     class="flex h-dvh w-full overflow-hidden bg-white dark:bg-zinc-800"
     data-unread-count="{{ $this->unreadTotal }}"
+    data-max-file-size="{{ config('chat.attachment_max_size_mb') * 1024 * 1024 }}"
+    data-file-size-error="{{ __('Файл должен быть не больше :size МБ.', ['size' => config('chat.attachment_max_size_mb')]) }}"
     x-bind:style="chatViewportStyle()"
     x-data="{
         viewportHeight: window.visualViewport?.height ?? window.innerHeight,
@@ -1644,8 +1646,8 @@ new #[Layout('layouts::chat')] #[Title('Чат')] class extends Component
                 return;
             }
 
-            if (files.some(file => file.size > 2 * 1024 * 1024)) {
-                this.showDropError(@js(__('Файл должен быть не больше 2 МБ.')));
+            if (files.some(file => file.size > Number(this.$el.dataset.maxFileSize))) {
+                this.showDropError(this.$el.dataset.fileSizeError);
                 return;
             }
 
@@ -1690,7 +1692,7 @@ new #[Layout('layouts::chat')] #[Title('Чат')] class extends Component
         <div class="flex w-full max-w-md flex-col items-center gap-3 rounded-2xl border-2 border-dashed border-sky-500 bg-white/95 px-6 py-10 text-center shadow-xl dark:border-sky-400 dark:bg-zinc-900/95">
             <flux:icon.arrow-up-tray class="size-10 text-sky-600 dark:text-sky-400" />
             <p class="text-lg font-semibold text-zinc-900 dark:text-white" x-text="canAttachFiles() ? @js(__('Перетащите файлы сюда')) : @js(__('Сначала откройте чат'))"></p>
-            <p class="text-sm text-zinc-500 dark:text-zinc-400">{{ __('До 3 файлов по 2 МБ · после загрузки нажмите «Отправить»') }}</p>
+            <p class="text-sm text-zinc-500 dark:text-zinc-400">{{ __('До 3 файлов по :size МБ · после загрузки нажмите «Отправить»', ['size' => config('chat.attachment_max_size_mb')]) }}</p>
         </div>
     </div>
 

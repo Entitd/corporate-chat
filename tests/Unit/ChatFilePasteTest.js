@@ -6,11 +6,14 @@ const template = readFileSync(new URL('../../resources/views/pages/⚡chat.blade
 const handlers = template.slice(template.indexOf('        hasDraggedFiles(event) {'), template.indexOf('\n    }"\n    x-on:dragenter'))
     .replace(/@js\(__\('([^']*)'\)\)/g, (_, message) => JSON.stringify(message));
 
-function composer(pendingFiles = [], activeChatId = 1) {
+function composer(pendingFiles = [], activeChatId = 1, maxSizeMb = 50) {
     const input = { files: null, dispatchEvent(event) { this.event = event; } };
     const wire = { pendingFiles, activeChatId, showChatList: false };
     const state = new Function('$wire', 'window', `return ({ ${handlers} });`)(wire, { innerWidth: 1280 });
-    state.$el = { querySelector: () => input };
+    state.$el = {
+        querySelector: () => input,
+        dataset: { maxFileSize: String(maxSizeMb * 1024 * 1024), fileSizeError: `Файл должен быть не больше ${maxSizeMb} МБ.` },
+    };
     state.showDropError = message => { state.error = message; };
 
     return { state, input };
@@ -34,7 +37,7 @@ function messageComposer({ editable = 'none', visible = true, dialog = false, di
         { pendingFiles: [], activeChatId: 1, showChatList: false }, { innerWidth: 1280 }, document,
     );
     Object.assign(state, handlersWithDocument);
-    state.$el = { querySelector: selector => selector === '[data-test=message-input]' ? (missing ? null : messageInput) : fileInput };
+    state.$el.querySelector = selector => selector === '[data-test=message-input]' ? (missing ? null : messageInput) : fileInput;
     const event = {
         ...clipboard([]),
         clipboardData: { files: [], getData: () => 'Вставленный текст\nВторая строка' },
@@ -143,15 +146,26 @@ test('pasted files respect the total attachment limit', () => {
 test('oversized pasted files are rejected before uploading', () => {
     const { state, input } = composer();
 
-    state.pasteFiles(clipboard([{ size: 2 * 1024 * 1024 + 1 }]));
+    state.pasteFiles(clipboard([{ size: 50 * 1024 * 1024 + 1 }]));
 
     assert.equal(input.files, null);
-    assert.equal(state.error, 'Файл должен быть не больше 2 МБ.');
+    assert.equal(state.error, 'Файл должен быть не больше 50 МБ.');
+});
+
+test('file uploads use the configured size and error message', () => {
+    const { state, input } = composer([], 1, 7);
+    state.pasteFiles(clipboard([{ size: 7 * 1024 * 1024 + 1 }]));
+    assert.equal(input.files, null);
+    assert.equal(state.error, 'Файл должен быть не больше 7 МБ.');
+
+    const event = clipboard([{ size: 7 * 1024 * 1024 }]);
+    state.pasteFiles(event);
+    assert.equal(input.files, event.clipboardData.files);
 });
 
 test('files at the size limit can be added to existing attachments', () => {
     const { state, input } = composer([{}]);
-    const event = clipboard([{ size: 2 * 1024 * 1024 }, { size: 100 }]);
+    const event = clipboard([{ size: 50 * 1024 * 1024 }, { size: 100 }]);
 
     state.pasteFiles(event);
 
