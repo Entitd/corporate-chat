@@ -1450,12 +1450,15 @@ new #[Layout('layouts::chat')] #[Title('Чат')] class extends Component
 
 <div
     class="flex h-dvh w-full overflow-hidden bg-white dark:bg-zinc-800"
+    data-unread-count="{{ $this->unreadTotal }}"
     x-bind:style="chatViewportStyle()"
     x-data="{
         viewportHeight: window.visualViewport?.height ?? window.innerHeight,
         viewportOffsetTop: window.visualViewport?.offsetTop ?? 0,
         viewportChangeHandler: null,
+        restoreTabTitle: null,
         init() {
+            this.restoreTabTitle = window.watchChatTabTitle(this.$el);
             this.viewportChangeHandler = () => {
                 this.viewportHeight = window.visualViewport?.height ?? window.innerHeight;
                 this.viewportOffsetTop = window.visualViewport?.offsetTop ?? 0;
@@ -1465,6 +1468,7 @@ new #[Layout('layouts::chat')] #[Title('Чат')] class extends Component
             window.visualViewport?.addEventListener('scroll', this.viewportChangeHandler);
         },
         destroy() {
+            this.restoreTabTitle?.();
             window.removeEventListener('resize', this.viewportChangeHandler);
             window.visualViewport?.removeEventListener('resize', this.viewportChangeHandler);
             window.visualViewport?.removeEventListener('scroll', this.viewportChangeHandler);
