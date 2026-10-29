@@ -1,6 +1,37 @@
 self.addEventListener('install', () => self.skipWaiting());
 self.addEventListener('activate', event => event.waitUntil(self.clients.claim()));
 
+// Keep incoming shares on this device until the user chooses a chat and uploads.
+self.addEventListener('fetch', event => {
+    const url = new URL(event.request.url);
+    if (url.origin !== self.location.origin || url.pathname !== '/chat/share' || event.request.method !== 'POST') return;
+
+    event.respondWith((async () => {
+        const redirect = query => Response.redirect(`${self.location.origin}/chat?${query}`, 303);
+        try {
+            const data = await event.request.formData();
+            const files = data.getAll('files').filter(value => typeof value !== 'string');
+            if (files.length > 3) return redirect('shareError=count');
+            const text = ['text', 'url', 'title'].some(key => String(data.get(key) || '').trim());
+            if (files.length === 0 && !text) return redirect('shareError=empty');
+
+            const cache = await caches.open('chat-share-target-v1');
+            for (const key of await cache.keys()) {
+                const saved = await cache.match(key);
+                if (Number(saved.headers.get('X-Shared-At')) < Date.now() - 60 * 60 * 1000) await cache.delete(key);
+            }
+
+            const id = crypto.randomUUID();
+            await cache.put(`${self.location.origin}/chat/share-data/${id}`, new Response(data, {
+                headers: { 'X-Shared-At': String(Date.now()) },
+            }));
+            return redirect(`share=${id}`);
+        } catch {
+            return redirect('shareError=storage');
+        }
+    })());
+});
+
 self.addEventListener('push', event => {
     let data = {};
     try { data = event.data?.json() ?? {}; } catch {}

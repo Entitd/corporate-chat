@@ -1,5 +1,6 @@
 import './webpush';
 import './chat-tab-title';
+import './share-target';
 import './attachment-preview';
 import Echo from 'laravel-echo';
 import Pusher from 'pusher-js';

@@ -1449,7 +1449,7 @@ new #[Layout('layouts::chat')] #[Title('Чат')] class extends Component
 }; ?>
 
 <div
-    class="flex h-dvh w-full overflow-hidden bg-white dark:bg-zinc-800"
+    class="flex h-dvh w-full flex-col overflow-hidden bg-white dark:bg-zinc-800"
     data-unread-count="{{ $this->unreadTotal }}"
     data-max-file-size="{{ config('chat.attachment_max_size_mb') * 1024 * 1024 }}"
     data-file-size-error="{{ __('Файл должен быть не больше :size МБ.', ['size' => config('chat.attachment_max_size_mb')]) }}"
@@ -1669,6 +1669,8 @@ new #[Layout('layouts::chat')] #[Title('Чат')] class extends Component
     x-on:paste.window="pasteInMessage($event)"
     x-on:incoming-chat-message.window="notifyIncomingMessage($event.detail)"
 >
+    <x-chat.share-target />
+    <div class="flex min-h-0 w-full flex-1 overflow-hidden">
     <button
         x-show="incomingNotification"
         x-cloak
@@ -1881,4 +1883,5 @@ new #[Layout('layouts::chat')] #[Title('Чат')] class extends Component
             </div>
         @endif
     </flux:modal>
+    </div>
 </div>

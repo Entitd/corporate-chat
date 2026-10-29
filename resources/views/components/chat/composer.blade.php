@@ -55,7 +55,7 @@
                     <span class="flex max-w-full items-center gap-1 rounded-lg bg-zinc-100 px-2 py-1 text-xs dark:bg-zinc-700" wire:key="pending-file-{{ $index }}">
                         <flux:icon.paper-clip class="size-3.5 shrink-0" />
                         <span class="max-w-48 truncate">{{ $file->getClientOriginalName() }}</span>
-                        <button type="button" wire:click="removePendingFile({{ $index }})" :aria-label="__('Убрать файл')" class="rounded p-0.5 hover:bg-zinc-200 dark:hover:bg-zinc-600"><flux:icon.x-mark class="size-3.5" /></button>
+                        <button type="button" wire:click="removePendingFile({{ $index }})" aria-label="{{ __('Убрать файл') }}" class="rounded p-0.5 hover:bg-zinc-200 dark:hover:bg-zinc-600"><flux:icon.x-mark class="size-3.5" /></button>
                     </span>
                 @endforeach
             </div>
