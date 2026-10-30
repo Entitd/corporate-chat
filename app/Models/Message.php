@@ -12,6 +12,8 @@ class Message extends Model
 {
     use SoftDeletes;
 
+    public const REACTION_EMOJIS = ['👍', '❤️', '😂', '🔥', '🎉', '😮', '😢', '👎'];
+
     protected $fillable = [
         'chat_id',
         'user_id',
@@ -60,6 +62,12 @@ class Message extends Model
     public function attachments(): HasMany
     {
         return $this->hasMany(Attachment::class);
+    }
+
+    /** @return BelongsToMany<User, $this> */
+    public function reactors(): BelongsToMany
+    {
+        return $this->belongsToMany(User::class, 'message_reactions')->withPivot('emoji');
     }
 
     /** @return BelongsToMany<User, $this> */

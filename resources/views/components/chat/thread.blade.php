@@ -69,7 +69,18 @@
                 ? Math.max(0, $el.scrollTop + lastReadMessage.getBoundingClientRect().bottom - $el.getBoundingClientRect().bottom + 16)
                 : 0;
         },
+        closeReactionPicker() {
+            const menu = $el.querySelector('[data-message-menu][data-open]');
+            if (!menu) return;
+            const top = $el.scrollTop;
+            const left = $el.scrollLeft;
+            menu.hidePopover();
+            $el.focus({ preventScroll: true });
+            $el.scrollTop = top;
+            $el.scrollLeft = left;
+        },
         handleScroll() {
+            this.closeReactionPicker();
             this.followingNewMessages = this.isAtBottom() && $el.dataset.searching !== 'true';
             if (!this.userNavigated) return;
             this.userNavigated = false;
@@ -95,8 +106,8 @@
     data-last-read-message-id="{{ $lastReadMessageId }}"
     data-has-unread="{{ $hasUnread ? 'true' : 'false' }}"
     data-searching="{{ $showMessageSearch ? 'true' : 'false' }}"
-    x-on:wheel="userNavigated = true"
-    x-on:touchmove.passive="userNavigated = true; if (document.activeElement?.matches('[data-test=message-input]')) document.activeElement.blur()"
+    x-on:wheel.passive="closeReactionPicker(); userNavigated = true"
+    x-on:touchmove.passive="closeReactionPicker(); userNavigated = true; if (document.activeElement?.matches('[data-test=message-input]')) document.activeElement.blur()"
     x-on:keydown="if (['ArrowDown', 'PageDown', 'End', ' '].includes($event.key)) userNavigated = true"
     x-on:scroll="handleScroll()"
     x-on:mousemove.throttle.200ms.window="readVisibleMessages()"
@@ -110,6 +121,7 @@
     @message-search-updated.window="$nextTick(() => { $el.scrollTop = 0 })"
     @older-messages-loaded.window="$nextTick(() => { $el.scrollTop += $el.scrollHeight - previousHeight })"
     @focus-chat-message.window="$nextTick(() => document.getElementById('chat-message-' + $event.detail.id)?.scrollIntoView({ block: 'center' }))"
+    tabindex="-1"
     data-test="chat-thread"
 >
     <div class="mx-auto flex max-w-3xl flex-col gap-3">

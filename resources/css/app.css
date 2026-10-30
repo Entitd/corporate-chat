@@ -252,3 +252,11 @@ dialog.photo-viewer {
     .photo-viewer-previous { left: 4px; }
     .photo-viewer-next { right: 4px; }
 }
+
+@media (pointer: coarse) {
+    .chat-bubble {
+        -webkit-touch-callout: none;
+        -webkit-user-select: none;
+        user-select: none;
+    }
+}

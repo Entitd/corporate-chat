@@ -15,6 +15,8 @@ function thread() {
         getClientRects: () => [{}],
         getBoundingClientRect: () => ({ top: 0, bottom: 300 }),
         querySelectorAll: () => messages,
+        querySelector: () => null,
+        focus: () => {},
     };
     const document = { visibilityState: 'visible', hasFocus: () => true };
     const wire = { markOpenChatAsRead: (...args) => { reads.push(args); return Promise.resolve(); } };
@@ -125,4 +127,23 @@ test('scrolling upward immediately stops following incoming messages', () => {
     state.handleScroll();
 
     assert.equal(state.followingNewMessages, false);
+});
+
+
+test('scrolling closes the open reaction picker in the current chat', () => {
+    const { state, element } = thread();
+    let closed = 0;
+    element.querySelector = selector => {
+        assert.equal(selector, '[data-message-menu][data-open]');
+        return { hidePopover: () => { closed++; element.scrollTop = 999; } };
+    };
+    element.scrollTop = 250;
+    element.scrollLeft = 0;
+    element.focus = options => assert.deepEqual(options, { preventScroll: true });
+    state.handleScroll();
+    assert.equal(element.scrollTop, 250);
+    assert.equal(closed, 1);
+    element.querySelector = () => null;
+    state.handleScroll();
+    assert.equal(closed, 1);
 });

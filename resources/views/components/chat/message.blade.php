@@ -10,7 +10,7 @@
     $author = $own ? auth()->user()->name : $message['user']['name'];
 @endphp
 
-<div {{ $attributes->class(['flex items-end gap-1.5 lg:gap-2.5', 'flex-row-reverse' => $own]) }}>
+<div x-data="messageContextMenu()" {{ $attributes->class(['flex items-end gap-1.5 lg:gap-2.5', 'flex-row-reverse' => $own]) }}>
     {{-- Аватар автора --}}
     @unless ($own)
         @if ($message['first_of_group'])
@@ -42,7 +42,15 @@
         @endif
 
         {{-- Пузырь сообщения --}}
-        <div @class([
+        <div
+            x-on:contextmenu="openMessageMenu($event)"
+            x-on:pointerdown="startMessagePress($event)"
+            x-on:pointermove="moveMessagePress($event)"
+            x-on:pointerup="cancelMessagePress()"
+            x-on:pointercancel="cancelMessagePress()"
+            x-on:pointerleave="cancelMessagePress()"
+            x-on:click.capture="messageContextClick($event)"
+            @class([
             'chat-bubble w-fit max-w-full rounded-2xl px-3.5 py-2.5 text-[15px] leading-relaxed shadow-xs lg:text-sm',
             'rounded-br-md bg-sky-100 text-zinc-900 dark:bg-sky-950 dark:text-sky-50' => $own,
             'rounded-bl-md bg-white text-zinc-800 dark:bg-zinc-800 dark:text-zinc-100' => ! $own,
@@ -118,9 +126,15 @@
             </span>
         </div>
 
-        <flux:dropdown align="{{ $own ? 'end' : 'start' }}" @class(['chat-message-actions absolute bottom-0', 'end-full me-1' => $own, 'start-full ms-1' => ! $own])>
+        <flux:dropdown x-ref="messageDropdown" data-message-dropdown align="{{ $own ? 'end' : 'start' }}" @class(['chat-message-actions absolute bottom-0', 'end-full me-1' => $own, 'start-full ms-1' => ! $own])>
             <flux:button size="xs" variant="ghost" icon="ellipsis-horizontal" square :aria-label="__('Действия с сообщением')" data-test="message-actions" />
-            <flux:menu>
+            <flux:menu data-message-menu>
+                <div class="grid grid-cols-4 gap-1" role="group" aria-label="{{ __('Выберите реакцию') }}" data-reaction-picker>
+                    @foreach (\App\Models\Message::REACTION_EMOJIS as $emoji)
+                        <flux:menu.item wire:click="toggleReaction({{ $message['id'] }}, @js($emoji))" class="justify-center text-xl" aria-label="{{ __('Реакция :emoji', ['emoji' => $emoji]) }}" data-test="pick-message-reaction">{{ $emoji }}</flux:menu.item>
+                    @endforeach
+                </div>
+                <flux:separator class="my-1" />
                 <flux:menu.item icon="arrow-uturn-left" wire:click="replyToMessage({{ $message['id'] }})">{{ __('Ответить') }}</flux:menu.item>
                 <flux:menu.item icon="arrow-uturn-right" wire:click="openForwardMessage({{ $message['id'] }})">{{ __('Переслать') }}</flux:menu.item>
                 @if ($own && $isGroupChat)
@@ -131,14 +145,21 @@
 
         {{-- Реакции --}}
         @if (filled($message['reactions'] ?? []))
-            <div class="flex flex-wrap items-center gap-1">
-                @foreach ($message['reactions'] as $reaction)
+            <div class="flex max-w-full flex-wrap items-center gap-1" data-test="message-reactions">
+                @foreach ($message['reactions'] ?? [] as $reaction)
                     <button
                         type="button"
-                        wire:key="reaction-{{ $messageIndex }}-{{ $loop->index }}"
+                        wire:key="reaction-{{ $message['id'] }}-{{ $reaction['emoji'] }}"
+                        wire:click="toggleReaction({{ $message['id'] }}, @js($reaction['emoji']))"
+                        wire:loading.attr="disabled"
+                        wire:target="toggleReaction"
+                        aria-pressed="{{ $reaction['mine'] ? 'true' : 'false' }}"
+                        aria-label="{{ $reaction['emoji'] }}: {{ $reaction['count'] }}{{ $reaction['mine'] ? __('. Убрать реакцию') : __('. Добавить реакцию') }}"
+                        title="{{ $reaction['names'] }}"
+                        data-test="message-reaction"
                         @class([
-                            'flex items-center gap-1 rounded-full border px-2 py-0.5 text-xs transition',
-                            'border-accent/40 bg-accent/10' => $reaction['mine'],
+                            'flex min-h-7 items-center gap-1 rounded-full border px-2 py-0.5 text-xs transition disabled:opacity-50',
+                            'border-sky-400 bg-sky-100 text-sky-700 dark:border-sky-600 dark:bg-sky-950 dark:text-sky-200' => $reaction['mine'],
                             'border-zinc-200 bg-white hover:bg-zinc-100 dark:border-zinc-600 dark:bg-zinc-700/60 dark:hover:bg-zinc-700' => ! $reaction['mine'],
                         ])
                     >
@@ -146,15 +167,6 @@
                         <span class="font-medium">{{ $reaction['count'] }}</span>
                     </button>
                 @endforeach
-
-                <button
-                    type="button"
-                    wire:key="reaction-add-{{ $messageIndex }}"
-                    class="flex items-center rounded-full border border-dashed border-zinc-300 px-2 py-0.5 text-xs text-zinc-400 hover:border-zinc-400 hover:text-zinc-500 dark:border-zinc-600"
-                    title="{{ __('Добавить реакцию') }}"
-                >
-                    <flux:icon.face-smile class="size-3.5" />
-                </button>
             </div>
         @endif
     </div>

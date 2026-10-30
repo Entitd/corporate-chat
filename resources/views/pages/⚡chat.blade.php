@@ -2,6 +2,7 @@
 
 use App\Events\ChatRead;
 use App\Events\MessageCreated;
+use App\Events\MessageReactionUpdated;
 use App\Models\Attachment;
 use App\Models\Chat;
 use App\Models\ChatUser;
@@ -197,6 +198,30 @@ new #[Layout('layouts::chat')] #[Title('Чат')] class extends Component
         abort_unless($chat, 403);
 
         return $chat->messages()->with(['user:id,name', 'attachments'])->findOrFail($messageId);
+    }
+
+    public function toggleReaction(int $messageId, string $emoji): void
+    {
+        abort_unless(in_array($emoji, Message::REACTION_EMOJIS, true), 422);
+        $message = $this->activeChatMessage($messageId);
+
+        DB::transaction(function () use ($message, $emoji): void {
+            $locked = Message::query()->lockForUpdate()->findOrFail($message->id);
+            $existing = $locked->reactors()->whereKey(auth()->id())->first();
+
+            if ($existing?->pivot->emoji === $emoji) {
+                $locked->reactors()->detach(auth()->id());
+            } else {
+                $locked->reactors()->syncWithoutDetaching([auth()->id() => ['emoji' => $emoji]]);
+            }
+        });
+
+        unset($this->messages);
+        MessageReactionUpdated::dispatch(
+            $message->chat_id,
+            $message->id,
+            $message->chat->users()->pluck('users.id')->all(),
+        );
     }
 
     public function replyToMessage(int $messageId): void
@@ -414,6 +439,7 @@ new #[Layout('layouts::chat')] #[Title('Чат')] class extends Component
     {
         return [
             'echo-private:users.'.auth()->id().',.chat.message.created' => 'refreshFromBroadcast',
+            'echo-private:users.'.auth()->id().',.chat.message.reaction.updated' => 'refreshReadStatus',
             'echo-private:users.'.auth()->id().',.chat.read' => 'refreshReadStatus',
         ];
     }
@@ -1108,6 +1134,14 @@ new #[Layout('layouts::chat')] #[Title('Чат')] class extends Component
 
             // Добавляем флаг own в массив сообщения
             $message['own'] = $isOwn;
+            $message['reactions'] = collect($message['reactors'] ?? [])
+                ->groupBy('pivot.emoji')
+                ->map(fn ($users, string $emoji): array => [
+                    'emoji' => $emoji,
+                    'count' => $users->count(),
+                    'mine' => $users->contains('id', auth()->id()),
+                    'names' => $users->pluck('name')->implode(', '),
+                ])->values()->all();
             $message['status'] = $isOwn && $readThroughMessageId !== null && $message['id'] <= $readThroughMessageId ? 'read' : 'sent';
             $message['body_segments'] = $this->messageSegments($message);
             $parent = $message['parent'] ?? null;
@@ -1356,7 +1390,7 @@ new #[Layout('layouts::chat')] #[Title('Чат')] class extends Component
         $chat = Chat::findOrFail($this->activeChatId);
 
         $query = $chat->messages()
-            ->with(['user:id,name', 'attachments:id,message_id,file_name,file_type,file_size', 'mentions:id,name', 'parent:id,chat_id,user_id,body', 'parent.user:id,name', 'forwardedMessage:id,user_id', 'forwardedMessage.user:id,name']);
+            ->with(['user:id,name', 'attachments:id,message_id,file_name,file_type,file_size', 'mentions:id,name', 'reactors:id,name', 'parent:id,chat_id,user_id,body', 'parent.user:id,name', 'forwardedMessage:id,user_id', 'forwardedMessage.user:id,name']);
         $search = trim($this->messageSearch);
 
         if ($search === '') {
