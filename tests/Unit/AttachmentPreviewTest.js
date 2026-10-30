@@ -12,7 +12,7 @@ function setup(fetch) {
         createObjectURL: () => { const next = `blob:preview-${urls.length}`; urls.push(next); return next; },
         revokeObjectURL: value => revoked.push(value),
     };
-    const state = new Function('window', 'fetch', 'URL', source + '; return attachmentPreview();')(window, fetch, url);
+    const state = new Function('window', 'fetch', 'URL', 'document', source + '; return attachmentPreview();')(window, fetch, url, { querySelectorAll: () => [] });
     state.$refs = {
         dialog: { open: false, showModal() { this.open = true; }, close() { this.open = false; } },
         canvas: { width: 0, height: 0 },

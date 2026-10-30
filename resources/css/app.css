@@ -194,3 +194,61 @@ select:focus[data-flux-control] {
         transition-duration: 0.01ms !important;
     }
 }
+
+/* Photo attachments use an immersive viewer; documents keep their page controls. */
+dialog.photo-viewer {
+    width: 100vw;
+    max-width: 100vw;
+    height: 100dvh;
+    max-height: 100dvh;
+    border: 0;
+    border-radius: 0;
+    background: #0c0c0f;
+    color: white;
+}
+.photo-viewer .attachment-viewer-header {
+    border: 0;
+    padding: max(12px, env(safe-area-inset-top)) 16px 12px;
+    background: #141417;
+    z-index: 2;
+}
+.photo-viewer .attachment-viewer-header a:hover,
+.photo-viewer .attachment-viewer-header button:hover {
+    background: #ffffff18;
+}
+.photo-viewer-stage { touch-action: none; }
+.photo-viewer .photo-viewer-controls {
+    position: absolute;
+    bottom: max(16px, env(safe-area-inset-bottom));
+    left: 50%;
+    transform: translateX(-50%);
+    z-index: 2;
+    width: max-content;
+    max-width: calc(100% - 24px);
+    border: 1px solid #ffffff14;
+    border-radius: 999px;
+    background: #242428e8;
+    backdrop-filter: blur(12px);
+}
+.photo-viewer-controls button:hover { background: #ffffff18; }
+.photo-viewer-arrow {
+    position: absolute;
+    top: 50%;
+    z-index: 2;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 44px;
+    height: 44px;
+    border-radius: 50%;
+    color: white;
+    background: #242428b3;
+}
+.photo-viewer-arrow:hover { background: #45454be6; }
+.photo-viewer-previous { left: 16px; }
+.photo-viewer-next { right: 16px; }
+@media (max-width: 640px) {
+    .photo-viewer-arrow { width: 32px; height: 40px; }
+    .photo-viewer-previous { left: 4px; }
+    .photo-viewer-next { right: 4px; }
+}

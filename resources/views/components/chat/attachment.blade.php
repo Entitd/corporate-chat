@@ -10,8 +10,8 @@
 @if ($isImage && ! $compact)
     <div x-data="{ failed: false }" class="group relative isolate mt-2 w-72 max-w-full overflow-hidden rounded-2xl bg-zinc-200 shadow-sm ring-1 ring-black/5 dark:bg-zinc-800 dark:ring-white/10" data-test="message-attachment">
         <a href="{{ $preview }}" class="block aspect-[4/3] w-full overflow-hidden focus-visible:outline-2 focus-visible:-outline-offset-4 focus-visible:outline-white"
-            x-on:click.prevent="$dispatch('open-attachment-preview', @js(['url' => $preview, 'download' => $download, 'name' => $attachment['file_name']]))"
-            aria-label="{{ __('Открыть :name', ['name' => $attachment['file_name']]) }}" data-test="attachment-preview-link">
+            x-on:click.prevent="$dispatch('open-attachment-preview', @js(['url' => $preview, 'download' => $download, 'name' => $attachment['file_name'], 'image' => $isImage]))"
+            aria-label="{{ __('Открыть :name', ['name' => $attachment['file_name']]) }}" data-test="attachment-preview-link" data-chat-photo="{{ json_encode(['url' => $preview, 'download' => $download, 'name' => $attachment['file_name'], 'image' => true]) }}">
             <img src="{{ $preview }}" alt="{{ $attachment['file_name'] }}" loading="lazy" decoding="async"
                 x-show="!failed" x-on:error="failed = true" class="h-full w-full object-cover transition-transform duration-300 group-hover:scale-[1.03] motion-reduce:transform-none motion-reduce:transition-none" data-test="attachment-image-preview" />
             <span x-show="failed" x-cloak class="flex h-full flex-col items-center justify-center gap-2 px-4 pb-10 text-center text-xs text-zinc-500 dark:text-zinc-400">
@@ -31,7 +31,7 @@
 <div @class(['flex min-w-0 items-center gap-1 rounded-xl', 'mt-2 bg-white/70 dark:bg-black/20' => ! $compact, 'hover:bg-zinc-800/5 dark:hover:bg-white/5' => $compact]) data-test="message-attachment">
     <a href="{{ $previewable ? $preview : $download }}"
         @if ($previewable)
-            x-on:click.prevent="$dispatch('open-attachment-preview', @js(['url' => $preview, 'download' => $download, 'name' => $attachment['file_name']]))"
+            x-on:click.prevent="$dispatch('open-attachment-preview', @js(['url' => $preview, 'download' => $download, 'name' => $attachment['file_name'], 'image' => $isImage]))"
         @endif
         class="flex min-w-0 flex-1 items-center gap-3 rounded-xl p-2.5 text-inherit"
         @if ($previewable) data-test="attachment-preview-link" @endif
