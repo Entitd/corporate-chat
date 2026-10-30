@@ -120,3 +120,39 @@ test('a stuck service worker releases the button after a timeout', async context
     assert.equal(state.enabled, false);
     assert.match(state.message, /не смог загрузить/);
 });
+
+function existingSubscription(endpoint) {
+    Notification.permission = 'granted';
+    registration.pushManager.getSubscription = async () => ({ toJSON: () => ({ endpoint }), unsubscribe: async () => true });
+}
+
+test('banner menus and returning to chat share one subscription sync', async () => {
+    existingSubscription('https://fcm.googleapis.com/shared-init');
+    const states = [chatPushNotifications(), chatPushNotifications(), chatPushNotifications()];
+    await Promise.all(states.map(state => state.init()));
+    await chatPushNotifications().init();
+    assert.equal(saved.length, 1);
+    assert.ok(states.every(state => state.enabled && !state.busy));
+});
+
+test('a failed sync preserves the device status and can be retried on the next visit', async () => {
+    existingSubscription('https://fcm.googleapis.com/failed-init');
+    let calls = 0;
+    globalThis.fetch = async () => { calls++; return { ok: false, status: 429 }; };
+    const state = chatPushNotifications();
+    await state.init();
+    assert.equal(state.enabled, true);
+    assert.equal(state.busy, false);
+    assert.match(state.message, /не удалось обновить подписку/);
+    await chatPushNotifications().init();
+    assert.equal(calls, 2);
+});
+
+test('a new login resyncs the subscription instead of reusing the previous session', async () => {
+    existingSubscription('https://fcm.googleapis.com/new-session');
+    await chatPushNotifications().init();
+    const query = document.querySelector;
+    document.querySelector = selector => selector.includes('csrf') ? { content: 'new-csrf' } : query(selector);
+    await chatPushNotifications().init();
+    assert.equal(saved.length, 2);
+});

@@ -1,3 +1,7 @@
+// Reuse subscription syncs across the banner, both menus and wire:navigate visits.
+const subscriptionSyncs = new Map();
+const syncLifetime = 5 * 60 * 1000;
+
 function withTimeout(operation, message, milliseconds = 20000) {
     let timer;
     return Promise.race([
@@ -27,12 +31,30 @@ export function chatPushNotifications() {
                 await this.prepareRegistration();
                 const subscription = await this.currentSubscription();
                 if (subscription && Notification.permission === 'granted') {
-                    await this.save(subscription);
                     this.enabled = true;
+                    await this.syncSubscription(subscription);
                 }
             } catch (error) {
-                this.message = this.errorMessage(error);
+                this.message = this.enabled
+                    ? 'Уведомления разрешены на устройстве, но не удалось обновить подписку на сервере. Попробуйте позже.'
+                    : this.errorMessage(error);
             } finally { this.busy = false; }
+        },
+        syncSubscription(subscription) {
+            // CSRF changes on a new login; the server must bind the subscription to that session.
+            const key = JSON.stringify([this.endpoint, document.querySelector('meta[name="csrf-token"]').content, subscription.toJSON()]);
+            const cached = subscriptionSyncs.get(key);
+            if (cached && cached.expiresAt > Date.now()) return cached.promise;
+
+            const entry = { expiresAt: Infinity, promise: null };
+            entry.promise = this.save(subscription).then(() => {
+                entry.expiresAt = Date.now() + syncLifetime;
+            }).catch(error => {
+                if (subscriptionSyncs.get(key) === entry) subscriptionSyncs.delete(key);
+                throw error;
+            });
+            subscriptionSyncs.set(key, entry);
+            return entry.promise;
         },
         async prepareRegistration() {
             await withTimeout(navigator.serviceWorker.register('/sw.js', { updateViaCache: 'none' }),
@@ -80,6 +102,7 @@ export function chatPushNotifications() {
             if (response.status === 422) throw new Error('Сервер отклонил подписку этого браузера. Сообщите администратору: ошибка подписки 422.');
             if (response.status === 503) throw new Error('Push-уведомления не настроены на сервере. Сообщите администратору.');
             if (!response.ok) throw new Error('Не удалось сохранить настройки уведомлений. Проверьте подключение и войдите в аккаунт заново.');
+            if (method === 'DELETE') subscriptionSyncs.clear();
         },
         applicationKey() {
             const padded = this.publicKey.replace(/-/g, '+').replace(/_/g, '/') + '='.repeat((4 - this.publicKey.length % 4) % 4);
