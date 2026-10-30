@@ -17,9 +17,9 @@
     $mentionUnreadCount = collect($mentionNotifications)->where('read', false)->count();
 @endphp
 
-<div class="relative flex h-full min-h-0 flex-col">
+<div class="chat-sidebar relative flex h-full min-h-0 flex-col">
     {{-- Шапка --}}
-    <div class="flex items-center gap-2 px-4 pb-2 pt-4 lg:gap-1 lg:border-b lg:border-zinc-200 lg:px-3 lg:py-3 dark:lg:border-zinc-700">
+    <div class="chat-list-header flex items-center gap-2 px-4 pb-3 pt-4 lg:gap-1 lg:border-b lg:border-zinc-200 lg:px-3 lg:py-3 dark:lg:border-zinc-700">
         <div class="lg:hidden">
             <x-chat.user-menu mobile />
         </div>
@@ -33,7 +33,10 @@
             <span class="truncate text-sm font-semibold text-zinc-900 dark:text-white">{{ config('app.name', 'Laravel') }}</span>
         </a>
 
-        <h1 class="min-w-0 flex-1 truncate text-2xl font-bold tracking-tight text-zinc-900 lg:hidden dark:text-white">{{ __('Чаты') }}</h1>
+        <div class="min-w-0 flex-1 lg:hidden">
+            <h1 class="truncate text-2xl font-bold tracking-tight text-zinc-900 dark:text-white">{{ __('Чаты') }}</h1>
+            <p class="text-[11px] font-medium text-zinc-400">{{ __('Ваша команда на связи') }}</p>
+        </div>
 
         <flux:tooltip :content="__('Новый чат')" class="ms-auto hidden lg:block">
             <flux:button
@@ -58,7 +61,7 @@
             <flux:icon.speaker-x-mark x-show="!soundEnabled" x-cloak class="size-5" />
         </button>
 
-        <div wire:poll.15s>
+        <div>
             <flux:dropdown position="bottom" align="end">
                 <span class="relative inline-flex">
                     <flux:button size="sm" variant="ghost" icon="bell" square :aria-label="__('Упоминания')" class="text-sky-600 dark:text-sky-400" data-test="mention-notifications-button" />
@@ -85,7 +88,7 @@
     <x-chat.push-notifications />
 
     {{-- Поиск --}}
-    <div class="px-4 pt-2 lg:px-3 lg:pt-3 [&_[data-flux-input]]:rounded-xl">
+    <div class="chat-list-search px-4 pt-2 lg:px-3 lg:pt-3 [&_[data-flux-input]]:rounded-xl">
         <flux:input
             wire:model.live.debounce.300ms="search"
             size="sm"
@@ -97,16 +100,16 @@
     </div>
 
     {{-- Фильтры --}}
-    <div class="flex items-center gap-1 border-b border-zinc-100 px-4 pt-2 lg:border-0 lg:px-3 lg:py-3 dark:border-zinc-800">
+    <div class="mx-4 my-3 flex items-center gap-1 rounded-2xl bg-zinc-100 p-1 lg:mx-3 dark:bg-zinc-800">
         @foreach ($tabs as $tab)
             <button
                 type="button"
                 wire:key="filter-{{ $tab['key'] }}"
                 wire:click="setFilter('{{ $tab['key'] }}')"
                 @class([
-                    'flex flex-1 items-center justify-center gap-1.5 border-b-2 px-2 py-2.5 text-xs font-semibold transition lg:rounded-lg lg:border-b-0 lg:py-1.5',
-                    'border-sky-500 text-sky-600 lg:bg-white lg:text-zinc-900 lg:shadow-xs dark:text-sky-400 dark:lg:bg-white/15 dark:lg:text-white' => $chatFilter === $tab['key'],
-                    'border-transparent text-zinc-500 hover:bg-zinc-800/5 dark:text-zinc-400 dark:hover:bg-white/10' => $chatFilter !== $tab['key'],
+                    'flex min-h-10 flex-1 items-center justify-center gap-1.5 rounded-xl px-2 py-2 text-xs font-semibold transition-colors lg:min-h-8 lg:py-1.5',
+                    'bg-white text-sky-700 shadow-xs dark:bg-zinc-700 dark:text-white' => $chatFilter === $tab['key'],
+                    'text-zinc-500 hover:bg-zinc-200/60 dark:text-zinc-400 dark:hover:bg-white/10' => $chatFilter !== $tab['key'],
                 ])
             >
                 {{ $tab['label'] }}
@@ -116,16 +119,16 @@
     </div>
 
     {{-- Список чатов --}}
-    <div class="min-h-0 flex-1 overflow-y-auto pb-20 lg:px-2 lg:pb-2" data-test="chat-list">
+    <div class="chat-scroll min-h-0 flex-1 overflow-y-auto px-2 pb-24 lg:pb-2" data-test="chat-list">
         @forelse ($chats as $chat)
             <div class="group relative" wire:key="chat-{{ $chat['id'] }}">
                 <button
                     type="button"
                     wire:click="selectChat({{ $chat['id'] }})"
                     @class([
-                        'flex w-full items-center gap-3 px-4 py-3 text-start transition lg:items-start lg:rounded-xl lg:px-2 lg:py-2',
-                        'hover:bg-sky-50/70 lg:bg-zinc-200/70 lg:hover:bg-zinc-200/70 dark:hover:bg-white/5 dark:lg:bg-white/10' => $chat['id'] === $activeChatId,
-                        'hover:bg-zinc-50 lg:hover:bg-zinc-800/5 dark:hover:bg-white/5' => $chat['id'] !== $activeChatId,
+                        'chat-list-row flex w-full items-center gap-3 rounded-2xl px-3 py-3 text-start transition-colors lg:items-start lg:rounded-xl lg:px-2 lg:py-2',
+                        'bg-sky-50 hover:bg-sky-100/70 dark:bg-sky-950/50 dark:hover:bg-sky-950/70' => $chat['id'] === $activeChatId,
+                        'hover:bg-zinc-100/70 dark:hover:bg-white/5' => $chat['id'] !== $activeChatId,
                     ])
                 >
                     {{-- Аватар --}}
@@ -135,7 +138,7 @@
                     </span>
 
                     {{-- Текст --}}
-                    <span class="min-w-0 flex-1 border-b border-zinc-100 py-1 lg:border-0 lg:py-0 dark:border-zinc-800">
+                    <span class="min-w-0 flex-1 py-1 lg:py-0">
                         <span class="flex items-center gap-1.5">
                             <span class="min-w-0 flex-1 truncate text-[15px] font-semibold text-zinc-900 lg:text-sm lg:font-medium dark:text-white">{{ $chat['name'] }}</span>
                             @if ($chat['last_message'])
@@ -184,7 +187,7 @@
     </div>
 
     {{-- Новый чат на мобильных --}}
-    <div class="absolute bottom-5 end-5 z-10 lg:hidden">
+    <div class="absolute bottom-[max(1.25rem,env(safe-area-inset-bottom))] end-5 z-10 lg:hidden">
         <button type="button" wire:click="$set('showNewChatModal', true)" class="flex size-14 items-center justify-center rounded-full bg-sky-500 text-white shadow-lg shadow-sky-500/25 transition hover:bg-sky-600" aria-label="{{ __('Новый чат') }}" data-test="new-chat-button-mobile">
             <flux:icon.pencil-square class="size-6" />
         </button>

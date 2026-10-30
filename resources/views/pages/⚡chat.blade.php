@@ -9,6 +9,7 @@ use App\Models\Message;
 use App\Models\User;
 use App\Notifications\ChatMentioned;
 use App\Services\EncryptedAttachments;
+use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Str;
@@ -578,7 +579,7 @@ new #[Layout('layouts::chat')] #[Title('Чат')] class extends Component
         $this->showMessageReadersModal = true;
     }
 
-    /** @return array{read: array<int, array{id: int, name: string}>, unread: array<int, array{id: int, name: string}>} */
+    /** @return array{read: array<int, array{id: int, name: string, read_at: ?string}>, unread: array<int, array{id: int, name: string}>} */
     #[Computed]
     public function messageReaders(): array
     {
@@ -587,6 +588,7 @@ new #[Layout('layouts::chat')] #[Title('Чат')] class extends Component
         }
 
         $message = $this->ownGroupMessage($this->messageReadersMessageId);
+        $readTimes = DB::table('message_reads')->where('message_id', $message->id)->pluck('read_at', 'user_id');
         $participants = $message->chat->users()
             ->withPivot('last_read_message_id')
             ->whereKeyNot(auth()->id())
@@ -599,7 +601,14 @@ new #[Layout('layouts::chat')] #[Title('Чат')] class extends Component
             $status = $participant->pivot->last_read_message_id !== null
                 && $participant->pivot->last_read_message_id >= $message->id ? 'read' : 'unread';
 
-            $readers[$status][] = ['id' => $participant->id, 'name' => $participant->name];
+            $reader = ['id' => $participant->id, 'name' => $participant->name];
+
+            if ($status === 'read') {
+                $readAt = $readTimes->get($participant->id);
+                $reader['read_at'] = $readAt === null ? null : Carbon::parse($readAt)->toIso8601String();
+            }
+
+            $readers[$status][] = $reader;
         }
 
         return $readers;
@@ -953,16 +962,35 @@ new #[Layout('layouts::chat')] #[Title('Чат')] class extends Component
             return;
         }
 
-        $updated = DB::table('chat_users')
-            ->where('chat_id', $chat->id)
-            ->where('user_id', auth()->id())
-            ->where(function ($query) use ($latestMessageId): void {
-                $query->whereNull('last_read_message_id')
-                    ->orWhere('last_read_message_id', '<', $latestMessageId);
-            })
-            ->update(['last_read_message_id' => $latestMessageId]);
+        $updated = DB::transaction(function () use ($chat, $latestMessageId): bool {
+            $membership = DB::table('chat_users')
+                ->where('chat_id', $chat->id)
+                ->where('user_id', auth()->id())
+                ->lockForUpdate()
+                ->first(['id', 'last_read_message_id']);
 
-        if ($updated === 0) {
+            if ($membership === null || ($membership->last_read_message_id ?? 0) >= $latestMessageId) {
+                return false;
+            }
+
+            if ($chat->type === 'group') {
+                // Only newly read messages get a timestamp; historical reads stay unknown.
+                $messages = $chat->messages()
+                    ->where('id', '>', $membership->last_read_message_id ?? 0)
+                    ->where('id', '<=', $latestMessageId)
+                    ->where('user_id', '!=', auth()->id())
+                    ->select('messages.id')
+                    ->selectRaw('? as user_id, ? as read_at', [auth()->id(), now()->toDateTimeString()]);
+
+                DB::table('message_reads')->insertOrIgnoreUsing(['message_id', 'user_id', 'read_at'], $messages);
+            }
+
+            DB::table('chat_users')->where('id', $membership->id)->update(['last_read_message_id' => $latestMessageId]);
+
+            return true;
+        });
+
+        if (! $updated) {
             return;
         }
 
@@ -1449,7 +1477,8 @@ new #[Layout('layouts::chat')] #[Title('Чат')] class extends Component
 }; ?>
 
 <div
-    class="flex h-dvh w-full flex-col overflow-hidden bg-white dark:bg-zinc-800"
+    class="chat-shell flex h-dvh w-full flex-col overflow-hidden bg-white dark:bg-zinc-900"
+    wire:poll.15s="refreshOpenChat"
     data-unread-count="{{ $this->unreadTotal }}"
     data-max-file-size="{{ config('chat.attachment_max_size_mb') * 1024 * 1024 }}"
     data-file-size-error="{{ __('Файл должен быть не больше :size МБ.', ['size' => config('chat.attachment_max_size_mb')]) }}"
@@ -1458,12 +1487,18 @@ new #[Layout('layouts::chat')] #[Title('Чат')] class extends Component
         viewportHeight: window.visualViewport?.height ?? window.innerHeight,
         viewportOffsetTop: window.visualViewport?.offsetTop ?? 0,
         viewportChangeHandler: null,
+        viewportFrame: null,
         restoreTabTitle: null,
         init() {
             this.restoreTabTitle = window.watchChatTabTitle(this.$el);
             this.viewportChangeHandler = () => {
-                this.viewportHeight = window.visualViewport?.height ?? window.innerHeight;
-                this.viewportOffsetTop = window.visualViewport?.offsetTop ?? 0;
+                if (this.viewportFrame !== null) return;
+                this.viewportFrame = requestAnimationFrame(() => {
+                    this.viewportHeight = window.visualViewport?.height ?? window.innerHeight;
+                    this.viewportOffsetTop = window.visualViewport?.offsetTop ?? 0;
+                    this.viewportFrame = null;
+                    this.$dispatch('chat-viewport-resized');
+                });
             };
             window.addEventListener('resize', this.viewportChangeHandler);
             window.visualViewport?.addEventListener('resize', this.viewportChangeHandler);
@@ -1471,13 +1506,14 @@ new #[Layout('layouts::chat')] #[Title('Чат')] class extends Component
         },
         destroy() {
             this.restoreTabTitle?.();
+            if (this.viewportFrame !== null) cancelAnimationFrame(this.viewportFrame);
             window.removeEventListener('resize', this.viewportChangeHandler);
             window.visualViewport?.removeEventListener('resize', this.viewportChangeHandler);
             window.visualViewport?.removeEventListener('scroll', this.viewportChangeHandler);
         },
         chatViewportStyle() {
             return window.innerWidth < 1024
-                ? `position: fixed; inset-inline: 0; top: ${this.viewportOffsetTop}px; height: ${this.viewportHeight}px`
+                ? `--chat-viewport-height: ${this.viewportHeight}px; position: fixed; inset-inline: 0; top: ${this.viewportOffsetTop}px; height: ${this.viewportHeight}px`
                 : '';
         },
         dragDepth: 0,
@@ -1701,7 +1737,7 @@ new #[Layout('layouts::chat')] #[Title('Чат')] class extends Component
     <div x-show="dropError" x-cloak style="display: none" role="alert" x-text="dropError" class="fixed inset-x-4 bottom-6 z-50 mx-auto w-fit max-w-md rounded-xl bg-red-600 px-4 py-3 text-center text-sm font-medium text-white shadow-lg" data-test="chat-file-drop-error"></div>
 
     {{-- Список чатов --}}
-    <aside class="{{ $showChatList ? 'flex w-full' : 'hidden' }} shrink-0 flex-col border-e border-zinc-200 bg-white lg:flex lg:w-80 lg:bg-zinc-50 xl:w-[22rem] dark:border-zinc-700 dark:bg-zinc-900">
+    <aside class="{{ $showChatList ? 'flex w-full' : 'hidden' }} min-w-0 shrink-0 flex-col border-e border-zinc-200/70 bg-white lg:flex lg:w-80 xl:w-[22rem] dark:border-zinc-800 dark:bg-zinc-900">
         <x-chat.sidebar
             :chats="$this->chats"
             :active-chat-id="$activeChatId"
@@ -1717,7 +1753,6 @@ new #[Layout('layouts::chat')] #[Title('Чат')] class extends Component
     @if ($this->activeChat !== [])
     <main
         class="{{ $showChatList ? 'hidden' : 'flex' }} min-w-0 flex-1 flex-col lg:flex"
-        wire:poll.10s="refreshOpenChat"
         x-on:touchstart.passive="startChatSwipe($event)"
         x-on:touchend.passive="endChatSwipe($event)"
         x-on:touchcancel.passive="chatSwipeStart = null"
@@ -1778,7 +1813,13 @@ new #[Layout('layouts::chat')] #[Title('Чат')] class extends Component
         />
     </main>
     @else
-        <main class="flex min-w-0 flex-1 items-center justify-center text-sm text-zinc-500">{{ __('Выберите чат') }}</main>
+        <main class="hidden min-w-0 flex-1 items-center justify-center bg-slate-50 p-8 text-center lg:flex dark:bg-zinc-950">
+            <div class="max-w-xs">
+                <span class="mx-auto mb-5 flex size-20 items-center justify-center rounded-3xl bg-sky-100 text-sky-600 dark:bg-sky-950 dark:text-sky-400"><flux:icon.chat-bubble-left-right class="size-9" /></span>
+                <h2 class="text-lg font-semibold text-zinc-900 dark:text-white">{{ __('Выберите чат') }}</h2>
+                <p class="mt-2 text-sm leading-relaxed text-zinc-500 dark:text-zinc-400">{{ __('Обсуждайте задачи, делитесь файлами и оставайтесь на связи с командой.') }}</p>
+            </div>
+        </main>
     @endif
 
     {{-- Информация о чате --}}
@@ -1795,12 +1836,12 @@ new #[Layout('layouts::chat')] #[Title('Чат')] class extends Component
     <x-chat.attachment-preview />
 
     <x-chat.new-chat-modal
-        :colleagues="$this->colleagues"
+        :colleagues="$showNewChatModal ? $this->colleagues : []"
         :mode="$newChatMode"
         :selected="$selectedColleagues"
     />
 
-    <x-chat.invite-colleague-modal :colleagues="$this->invitableColleagues" :selected-invitee-id="$selectedInviteeId" :show="$showInviteModal" />
+    <x-chat.invite-colleague-modal :colleagues="$showInviteModal ? $this->invitableColleagues : []" :selected-invitee-id="$selectedInviteeId" :show="$showInviteModal" />
 
     <flux:modal wire:model.self="showForwardModal" class="md:w-96" data-test="forward-message-modal">
         @if ($showForwardModal)
@@ -1830,7 +1871,14 @@ new #[Layout('layouts::chat')] #[Title('Чат')] class extends Component
                         @forelse ($messageReaders['read'] as $reader)
                             <div class="flex items-center gap-2 py-1.5" wire:key="reader-read-{{ $reader['id'] }}">
                                 <flux:avatar :name="$reader['name']" color="auto" size="xs" />
-                                <span class="text-sm text-zinc-900 dark:text-white">{{ $reader['name'] }}</span>
+                                <div class="min-w-0">
+                                    <p class="truncate text-sm text-zinc-900 dark:text-white">{{ $reader['name'] }}</p>
+                                    @if ($reader['read_at'] !== null)
+                                        <time datetime="{{ $reader['read_at'] }}" x-text="formatChatDate($el.dateTime) + ', ' + formatChatTime($el.dateTime)" class="text-xs text-zinc-500 dark:text-zinc-400" data-test="message-read-at">{{ Carbon::parse($reader['read_at'])->format('d.m.Y, H:i') }}</time>
+                                    @else
+                                        <p class="text-xs text-zinc-500 dark:text-zinc-400">{{ __('Время неизвестно') }}</p>
+                                    @endif
+                                </div>
                             </div>
                         @empty
                             <p class="text-sm text-zinc-500 dark:text-zinc-400">{{ __('Пока никто не прочитал') }}</p>

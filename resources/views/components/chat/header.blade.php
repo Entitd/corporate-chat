@@ -4,7 +4,7 @@
     'showDetails' => false,
 ])
 
-<div class="flex h-16 shrink-0 items-center gap-2 border-b border-zinc-200 bg-white px-2 lg:gap-3 lg:px-3 dark:border-zinc-700 dark:bg-zinc-800">
+<div class="chat-header flex min-h-18 shrink-0 items-center gap-2 border-b border-zinc-200/70 bg-white px-2 py-2 lg:gap-3 lg:px-4 dark:border-zinc-700 dark:bg-zinc-900">
     {{-- Возврат к списку чатов (мобильные) --}}
     <flux:button
         class="lg:hidden"
@@ -79,15 +79,14 @@
         </flux:tooltip>
 
         <flux:dropdown position="bottom" align="end">
-            <flux:button size="sm" variant="ghost" icon="ellipsis-vertical" square />
+            <flux:button size="sm" variant="ghost" icon="ellipsis-vertical" square :aria-label="__('Действия с чатом')" />
 
             <flux:menu>
+                <flux:menu.item icon="information-circle" wire:click="toggleDetails">{{ __('О чате') }}</flux:menu.item>
                 <flux:menu.item icon="user-group" wire:click="showParticipants">{{ __('Участники') }}</flux:menu.item>
-                <flux:menu.item icon="bell-slash">{{ __('Отключить уведомления') }}</flux:menu.item>
-                <flux:menu.item icon="map-pin">{{ __('Закрепить чат') }}</flux:menu.item>
                 <flux:menu.separator />
-                <flux:menu.item icon="document">{{ __('Общие файлы') }}</flux:menu.item>
-                <flux:menu.item icon="link">{{ __('Общие ссылки') }}</flux:menu.item>
+                <flux:menu.item icon="document" wire:click="toggleDetails">{{ __('Общие файлы') }}</flux:menu.item>
+                <flux:menu.item icon="link" wire:click="toggleDetails">{{ __('Общие ссылки') }}</flux:menu.item>
                 @if ($chat['type'] === 'group')
                     <flux:menu.separator />
                     <flux:menu.item icon="arrow-right-start-on-rectangle" variant="danger" wire:click="leaveChat({{ $chat['id'] }})">{{ __('Покинуть чат') }}</flux:menu.item>

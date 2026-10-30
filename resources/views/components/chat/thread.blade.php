@@ -11,7 +11,7 @@
 
 <div
     wire:key="chat-thread-{{ $chat['id'] }}"
-    class="min-h-0 flex-1 overflow-y-auto bg-[#e9f0eb] px-2 py-4 sm:px-6 lg:bg-zinc-50 dark:bg-[#101b26] dark:lg:bg-zinc-800/60"
+    class="chat-thread chat-scroll min-h-0 flex-1 overflow-y-auto bg-slate-50 px-3 py-4 sm:px-6 dark:bg-zinc-950"
     x-data="{
         previousHeight: 0,
         userNavigated: false,
@@ -101,6 +101,7 @@
     x-on:scroll="handleScroll()"
     x-on:mousemove.throttle.200ms.window="readVisibleMessages()"
     x-on:resize.window="$nextTick(() => readVisibleWithoutScrolling())"
+    x-on:chat-viewport-resized.window="$nextTick(() => { if (followingNewMessages) $el.scrollTop = $el.scrollHeight })"
     @incoming-chat-message.window="handleIncomingMessage($event)"
     x-on:visibilitychange.document="handleVisibilityChange()"
     x-on:focus.window="readVisibleMessages()"
@@ -111,7 +112,7 @@
     @focus-chat-message.window="$nextTick(() => document.getElementById('chat-message-' + $event.detail.id)?.scrollIntoView({ block: 'center' }))"
     data-test="chat-thread"
 >
-    <div class="mx-auto flex max-w-3xl flex-col gap-2.5 lg:gap-4">
+    <div class="mx-auto flex max-w-3xl flex-col gap-3">
         @if (! $showMessageSearch && count($messages['data']) < $messages['total'])
             <button type="button" wire:click="loadOlderMessages" x-on:click="previousHeight = $el.closest('[data-test=chat-thread]').scrollHeight" class="mx-auto rounded-lg px-3 py-1.5 text-xs text-zinc-500 hover:bg-zinc-200/70 dark:hover:bg-zinc-700" data-test="load-older-messages">
                 {{ __('Загрузить предыдущие сообщения') }}
@@ -121,7 +122,7 @@
         {{-- Начало переписки --}}
         <div class="flex items-center justify-center gap-3 py-2">
             <flux:separator class="flex-1" />
-            <span class="rounded-full bg-zinc-700/40 px-3 py-1 text-[11px] font-medium text-white lg:bg-transparent lg:px-0 lg:py-0 lg:tracking-wide lg:text-zinc-400 lg:uppercase dark:bg-white/15 dark:lg:bg-transparent">{{ __('Начало переписки') }}</span>
+            <span class="px-2 text-[10px] font-semibold tracking-wide text-zinc-400 uppercase">{{ __('Начало переписки') }}</span>
             <flux:separator class="flex-1" />
         </div>
 
@@ -143,7 +144,7 @@
                     x-show="!sameLocalDay($el.dataset.current, $el.dataset.previous)"
                     @unless ($message['show_day']) style="display: none" @endunless
                 >
-                    <time datetime="{{ $message['created_at'] }}" x-text="formatChatDate($el.dateTime)" class="rounded-full bg-zinc-700/40 px-3 py-1 text-[11px] font-medium text-white dark:bg-white/15">{{ \Illuminate\Support\Carbon::parse($message['created_at'])->format('d.m.Y') }}</time>
+                    <time datetime="{{ $message['created_at'] }}" x-text="formatChatDate($el.dateTime)" class="rounded-full border border-zinc-200/70 bg-white px-3 py-1 text-[11px] font-medium text-zinc-500 dark:border-zinc-800 dark:bg-zinc-900 dark:text-zinc-400">{{ \Illuminate\Support\Carbon::parse($message['created_at'])->format('d.m.Y') }}</time>
                 </div>
 
             <x-chat.message

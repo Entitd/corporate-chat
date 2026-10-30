@@ -7,14 +7,16 @@
 ])
 
 <div
-    class="shrink-0 border-t border-zinc-200 bg-white px-2 pb-[max(0.75rem,env(safe-area-inset-bottom))] pt-2 lg:px-3 lg:py-3 dark:border-zinc-700 dark:bg-zinc-800"
-    x-data="{ sending: false, uploading: false, uploadProgress: 0 }"
+    class="chat-composer shrink-0 border-t border-zinc-200/70 bg-white px-3 pb-[max(0.75rem,env(safe-area-inset-bottom))] pt-3 lg:px-4 lg:py-3 dark:border-zinc-700 dark:bg-zinc-900"
+    x-data="chatComposer()"
     @mention-inserted.window="$nextTick(() => $refs.messageInput?.focus())"
     @message-reply-selected.window="$nextTick(() => $refs.messageInput?.focus())"
     x-on:livewire-upload-start="uploading = true; uploadProgress = 0"
     x-on:livewire-upload-progress="uploadProgress = $event.detail.progress"
     x-on:livewire-upload-finish="uploading = false"
     x-on:livewire-upload-error="uploading = false"
+    x-on:chat-viewport-resized.window="$nextTick(() => resizeInput())"
+    x-on:message-sent.window="$nextTick(() => resizeInput())"
 >
     <div class="mx-auto max-w-3xl">
         @if ($reply)
@@ -71,8 +73,8 @@
         @error('pendingFiles.*') <p class="mb-2 text-xs text-red-600">{{ $message }}</p> @enderror
         @error('messageBody') <p class="mb-2 text-xs text-red-600">{{ $message }}</p> @enderror
 
-        <div class="flex items-end gap-2">
-            <div class="flex items-center gap-0.5">
+        <div class="flex items-end gap-1.5 sm:gap-2">
+            <div class="flex shrink-0 items-center gap-0.5 pb-0.5" x-ref="composerActions" x-bind:class="{ 'flex-col': stackActions }">
                 <input type="file" multiple class="sr-only" wire:model="pendingFiles" x-ref="chatFileInput" aria-label="{{ __('Выбрать файлы') }}" data-test="chat-file-input" />
                 <flux:tooltip :content="__('Прикрепить файл')">
                     <flux:button size="sm" variant="ghost" icon="paper-clip" square x-on:click="$refs.chatFileInput.click()" data-test="attach-file-button" />
@@ -84,24 +86,30 @@
             </div>
 
             <flux:textarea
-                wire:model.live.debounce.200ms="messageBody"
+                wire:model="messageBody"
                 x-ref="messageInput"
                 rows="1"
                 resize="none"
-                class="min-w-0 flex-1"
-                :placeholder="__('Написать сообщение…')"
+                class="chat-message-input min-w-0 flex-1"
+                x-bind:style="{ height: inputHeight + 'px' }"
+                x-on:focus="resizeInput()"
+                x-on:click="resizeInput()"
+                enterkeyhint="enter"
+                :placeholder="__('Сообщение…')"
                 :aria-label="__('Новое сообщение')"
                 data-test="message-input"
-                @keydown.enter="if ($event.shiftKey || $event.isComposing) return; $event.preventDefault(); if (sending || uploading) return; sending = true; $wire.sendMessage($event.target.value).finally(() => sending = false)"
+                x-on:input.debounce.250ms="syncMentionSearch($event.target.value)"
+                @keydown.enter="if ($event.shiftKey || $event.isComposing || window.matchMedia('(pointer: coarse)').matches) return; $event.preventDefault(); if (sending || uploading) return; sending = true; $wire.sendMessage($event.target.value).finally(() => { sending = false; $nextTick(() => resizeInput()) })"
             />
 
             <flux:button
                 variant="primary"
                 icon="paper-airplane"
                 square
+                class="chat-send-button shrink-0"
                 :aria-label="__('Отправить')"
-                x-on:click.prevent="if (sending || uploading) return; sending = true; $wire.sendMessage($refs.messageInput.value).finally(() => sending = false)"
-                x-bind:disabled="sending || uploading"
+                x-on:click.prevent="if (sending || uploading) return; sending = true; $wire.sendMessage($refs.messageInput.value).finally(() => { sending = false; $nextTick(() => resizeInput()) })"
+                x-bind:disabled="sending || uploading || (!$wire.messageBody.trim() && !$wire.pendingFiles.length)"
                 data-test="send-message"
             />
         </div>

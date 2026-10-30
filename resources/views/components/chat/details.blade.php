@@ -6,7 +6,7 @@
     'links' => [],
 ])
 
-<aside class="fixed inset-0 z-30 flex flex-col border-s border-zinc-200 bg-white lg:static lg:z-auto lg:w-80 lg:shrink-0 dark:border-zinc-700 dark:bg-zinc-900" x-on:show-chat-participants.window="$nextTick(() => $el.querySelector('#chat-participants')?.scrollIntoView({ block: 'start' }))">
+<aside class="chat-details fixed inset-0 z-30 flex flex-col border-s border-zinc-200 bg-white lg:static lg:z-auto lg:w-80 lg:shrink-0 dark:border-zinc-700 dark:bg-zinc-900" x-on:show-chat-participants.window="$nextTick(() => $el.querySelector('#chat-participants')?.scrollIntoView({ block: 'start' }))">
     {{-- Шапка --}}
     <div class="flex h-16 shrink-0 items-center gap-2 border-b border-zinc-200 px-3 dark:border-zinc-700">
         <h2 class="text-sm font-semibold text-zinc-900 dark:text-white">{{ __('О чате') }}</h2>
