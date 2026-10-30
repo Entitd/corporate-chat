@@ -115,9 +115,7 @@
         </div>
 
         <p class="mt-2 hidden px-1 text-[11px] text-zinc-400 lg:block">
-            {{ __('Enter — отправить, Shift + Enter — новая строка') }}
-            {{ __('· Ctrl + V — вставить файлы, также можно перетащить их сюда или нажать на скрепку') }}
-            {{ __('· до 3 файлов по :size МБ', ['size' => config('chat.attachment_max_size_mb')]) }}
+            {{ __('Добавьте до 3 файлов по :size МБ', ['size' => config('chat.attachment_max_size_mb')]) }}
 
             @if ($chat['type'] === 'group')
                 {{ __('· сообщение увидят все участники чата') }}

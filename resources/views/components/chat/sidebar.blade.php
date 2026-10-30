@@ -35,7 +35,6 @@
 
         <div class="min-w-0 flex-1 lg:hidden">
             <h1 class="truncate text-2xl font-bold tracking-tight text-zinc-900 dark:text-white">{{ __('Чаты') }}</h1>
-            <p class="text-[11px] font-medium text-zinc-400">{{ __('Ваша команда на связи') }}</p>
         </div>
 
         <flux:tooltip :content="__('Новый чат')" class="ms-auto hidden lg:block">
