@@ -15,6 +15,7 @@ test('device notification controls live inside the user menus beside logout', fu
     expect($banner->item(0)->getAttribute('x-show'))->toBe('checked && !enabled && !busy');
 
     foreach ($panels as $panel) {
+        expect($panel->getAttribute('x-show'))->toBe('true');
         $menu = $xpath->query('ancestor::*[@data-test="chat-user-menu"]', $panel);
         expect($menu->length)->toBe(1);
         expect($xpath->query('.//*[@data-test="logout-button"]', $menu->item(0))->length)->toBe(1);
