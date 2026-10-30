@@ -17,7 +17,7 @@ beforeEach(() => {
             subscribe: async () => { subscribed++; return subscription; },
         },
     };
-    globalThis.window = { isSecureContext: true, matchMedia: () => ({ matches: false }), PushManager: class {}, Notification: {} };
+    globalThis.window = { dispatchEvent() {}, isSecureContext: true, matchMedia: () => ({ matches: false }), PushManager: class {}, Notification: {} };
     globalThis.Notification = { permission: 'default', requestPermission: async () => 'granted' };
     Object.defineProperty(globalThis, 'navigator', {
         configurable: true,

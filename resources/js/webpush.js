@@ -104,6 +104,7 @@ export function chatPushNotifications() {
                         if (!await withTimeout(subscription.unsubscribe(), 'Браузер не смог отключить подписку. Попробуйте снова.')) throw new Error('Не удалось отключить уведомления. Попробуйте снова.');
                     }
                     this.enabled = false;
+                    window.dispatchEvent(new CustomEvent('device-push-changed', { detail: { enabled: false } }));
                     this.message = 'Уведомления на этом устройстве отключены.';
                     return;
                 }
@@ -125,6 +126,7 @@ export function chatPushNotifications() {
                     'Браузер не смог подключиться к службе push за 20 секунд. Проверьте соединение и попробуйте снова.');
                 await this.save(subscription);
                 this.enabled = true;
+                window.dispatchEvent(new CustomEvent('device-push-changed', { detail: { enabled: true } }));
                 this.message = 'Уведомления включены на этом устройстве.';
             } catch (error) {
                 this.message = this.errorMessage(error);

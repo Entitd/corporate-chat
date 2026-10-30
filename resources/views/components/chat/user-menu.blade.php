@@ -13,7 +13,7 @@
         />
     @endif
 
-    <flux:menu>
+    <flux:menu class="min-w-72" data-test="chat-user-menu">
         <div class="flex items-center gap-2 px-1 py-1.5 text-start text-sm">
             <flux:avatar :name="auth()->user()->name" :initials="auth()->user()->initials()" />
             <div class="grid flex-1 text-start text-sm leading-tight">
@@ -25,6 +25,10 @@
         <flux:menu.separator />
 
         <x-theme-menu-item />
+
+        <x-chat.push-notifications :in-menu="true" />
+
+        <flux:menu.separator />
 
         <form method="POST" action="{{ route('logout') }}" class="w-full">
             @csrf
