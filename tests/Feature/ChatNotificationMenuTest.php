@@ -12,7 +12,7 @@ test('device notification controls live inside the user menus beside logout', fu
     expect($panels->length)->toBe(2);
     $banner = $xpath->query('//*[@data-location="banner"]');
     expect($banner->length)->toBe(1);
-    expect($banner->item(0)->getAttribute('x-show'))->toBe('!enabled && !busy');
+    expect($banner->item(0)->getAttribute('x-show'))->toBe('checked && !enabled && !busy');
 
     foreach ($panels as $panel) {
         $menu = $xpath->query('ancestor::*[@data-test="chat-user-menu"]', $panel);

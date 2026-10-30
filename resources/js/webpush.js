@@ -14,6 +14,7 @@ export function chatPushNotifications() {
     return {
         busy: false,
         enabled: false,
+        checked: false,
         message: '',
         registration: null,
         publicKey: document.querySelector('meta[name="webpush-public-key"]')?.content,
@@ -25,15 +26,23 @@ export function chatPushNotifications() {
             return window.isSecureContext && 'serviceWorker' in navigator && 'PushManager' in window && 'Notification' in window;
         },
         async init() {
-            if (this.needsInstallation || !this.supported || !this.publicKey) return;
+            if (this.needsInstallation || !this.supported || !this.publicKey) {
+                this.checked = true;
+                return;
+            }
             this.busy = true;
+            this.message = '';
             try {
-                await this.prepareRegistration();
+                // Read the existing worker first: a failed worker update must not
+                // prevent us from finding a subscription that already works.
+                this.registration = await withTimeout(
+                    navigator.serviceWorker.getRegistration?.('/') ?? Promise.resolve(null),
+                    'Не удалось проверить уведомления. Попробуйте ещё раз.');
+                if (!this.registration) await this.prepareRegistration();
                 const subscription = await this.currentSubscription();
-                if (subscription && Notification.permission === 'granted') {
-                    this.enabled = true;
-                    await this.syncSubscription(subscription);
-                }
+                this.enabled = !!subscription && Notification.permission === 'granted';
+                this.checked = true;
+                if (this.enabled) await this.syncSubscription(subscription);
             } catch (error) {
                 this.message = this.enabled
                     ? 'Уведомления разрешены на устройстве, но не удалось обновить подписку на сервере. Попробуйте позже.'
@@ -127,6 +136,7 @@ export function chatPushNotifications() {
                         if (!await withTimeout(subscription.unsubscribe(), 'Браузер не смог отключить подписку. Попробуйте снова.')) throw new Error('Не удалось отключить уведомления. Попробуйте снова.');
                     }
                     this.enabled = false;
+                    this.checked = true;
                     window.dispatchEvent(new CustomEvent('device-push-changed', { detail: { enabled: false } }));
                     this.message = 'Уведомления на этом устройстве отключены.';
                     return;
@@ -149,6 +159,7 @@ export function chatPushNotifications() {
                     'Браузер не смог подключиться к службе push за 20 секунд. Проверьте соединение и попробуйте снова.');
                 await this.save(subscription);
                 this.enabled = true;
+                this.checked = true;
                 window.dispatchEvent(new CustomEvent('device-push-changed', { detail: { enabled: true } }));
                 this.message = 'Уведомления включены на этом устройстве.';
             } catch (error) {

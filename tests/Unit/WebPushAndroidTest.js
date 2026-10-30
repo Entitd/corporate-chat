@@ -156,3 +156,33 @@ test('a new login resyncs the subscription instead of reusing the previous sessi
     await chatPushNotifications().init();
     assert.equal(saved.length, 2);
 });
+
+test('initialization reads an existing subscription without updating its worker first', async () => {
+    existingSubscription('https://fcm.googleapis.com/existing-worker');
+    navigator.serviceWorker.getRegistration = async () => registration;
+    navigator.serviceWorker.register = async () => { throw new Error('Worker update failed'); };
+    const state = chatPushNotifications();
+    await state.init();
+    assert.equal(state.enabled, true);
+    assert.equal(state.checked, true);
+    assert.equal(state.message, '');
+});
+
+test('an unsuccessful device check cannot show an invitation to enable notifications', async () => {
+    navigator.serviceWorker.getRegistration = async () => { throw new Error('Worker unavailable'); };
+    const state = chatPushNotifications();
+    await state.init();
+    assert.equal(state.checked, false);
+    assert.equal(state.busy, false);
+    assert.ok(state.message);
+    assert.equal(state.checked && !state.enabled && !state.busy, false);
+});
+
+test('a verified absent subscription still shows the enable banner even with granted permission', async () => {
+    Notification.permission = 'granted';
+    navigator.serviceWorker.getRegistration = async () => registration;
+    const state = chatPushNotifications();
+    await state.init();
+    assert.equal(state.checked, true);
+    assert.equal(state.enabled, false);
+});
